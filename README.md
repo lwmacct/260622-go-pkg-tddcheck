@@ -100,6 +100,29 @@ x_database.service.go
 helper.utils.go
 ```
 
+## Mapper Functions
+
+Mapper files are for pure package-level conversion functions.
+
+Rules:
+
+```text
+*.mapper.go functions must start with To
+*.mapper.go functions must not use receivers
+*.mapper.go files must not declare types, vars, or consts
+*.mapper.go files must not import context, HTTP, database, or ORM packages
+```
+
+Recommended names:
+
+```text
+ToDeviceDTO             service model -> handler DTO
+ToServiceCreateDevice   handler DTO -> service command
+ToRepositoryDevicePatch service command -> repository command
+```
+
+Avoid `Map*`, `From*`, `Build*`, and `Convert*`; they hide the target type and make mapper direction harder to read at call sites.
+
 ## Layer Dependencies
 
 Default forbidden imports:

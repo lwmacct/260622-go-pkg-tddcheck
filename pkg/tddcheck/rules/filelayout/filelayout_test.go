@@ -114,7 +114,9 @@ import "context"
 
 type DeviceMapper struct{}
 func (m DeviceMapper) ToDevice() {}
-func buildDevice() {}
+func MapDevice() {}
+func FromDevice() {}
+func BuildDevice() {}
 `,
 	})
 
@@ -125,7 +127,29 @@ func buildDevice() {}
 	assertViolationContains(t, violations, "mapper files must not import context")
 	assertViolationContains(t, violations, "mapper files must only declare functions")
 	assertViolationContains(t, violations, "mapper functions must not use receivers")
-	assertViolationContains(t, violations, "mapper function buildDevice must start with To")
+	assertViolationContains(t, violations, "mapper function MapDevice must start with To")
+	assertViolationContains(t, violations, "mapper function FromDevice must start with To")
+	assertViolationContains(t, violations, "mapper function BuildDevice must start with To")
+}
+
+func TestViolationsChecksUtilsContent(t *testing.T) {
+	root := fixture(t, map[string]string{
+		"internal/service/device.utils.go": `package service
+
+const defaultName = "device"
+type DeviceHelper struct{}
+func (h DeviceHelper) utilDevice() {}
+func buildDevice() {}
+`,
+	})
+
+	violations, err := New(filepath.Join(root, "internal")).Violations()
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertViolationContains(t, violations, "utils files must only declare util* functions")
+	assertViolationContains(t, violations, "utils functions must not use receivers")
+	assertViolationContains(t, violations, "utils function buildDevice must start with util")
 }
 
 func TestViolationsRejectsArchitectureScopeWithoutPrefix(t *testing.T) {

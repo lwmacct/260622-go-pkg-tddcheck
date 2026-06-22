@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"unicode"
 
 	"github.com/lwmacct/260622-go-pkg-tddcheck/pkg/tddcheck/rulekit"
 )
@@ -138,6 +139,11 @@ func violationsInFile(config rulekit.Config, layer string, filename string) ([]V
 			Message: fmt.Sprintf("architecture scope %q must not use %s.%s.go in %s", parsed.scope, parsed.scope, parsed.kind, layer),
 		})
 	}
+	scopeViolations, err := inferredScopeViolations(parsed, filename)
+	if err != nil {
+		return nil, err
+	}
+	violations = append(violations, scopeViolations...)
 
 	declViolations, err := declarationViolations(layer, parsed, filename)
 	if err != nil {
@@ -145,6 +151,96 @@ func violationsInFile(config rulekit.Config, layer string, filename string) ([]V
 	}
 	violations = append(violations, declViolations...)
 	return violations, nil
+}
+
+func inferredScopeViolations(name fileName, filename string) ([]Violation, error) {
+	if strings.HasPrefix(name.scope, "x_") {
+		return nil, nil
+	}
+	fileSet := token.NewFileSet()
+	parsedFile, err := parser.ParseFile(fileSet, filename, nil, parser.SkipObjectResolution)
+	if err != nil {
+		return nil, err
+	}
+	for _, identifier := range fileIdentifiers(parsedFile) {
+		if expectedScope, ok := inferredSnakeScope(name.scope, identifier); ok && expectedScope != name.scope {
+			return []Violation{{
+				File:    rulekit.DisplayFilename(filename),
+				Line:    1,
+				Message: fmt.Sprintf("scope %q must use snake_case resource name %q inferred from %s", name.scope, expectedScope, identifier),
+			}}, nil
+		}
+	}
+	return nil, nil
+}
+
+func fileIdentifiers(parsedFile *ast.File) []string {
+	var identifiers []string
+	for _, decl := range parsedFile.Decls {
+		switch typed := decl.(type) {
+		case *ast.GenDecl:
+			for _, spec := range typed.Specs {
+				if typeSpec, ok := spec.(*ast.TypeSpec); ok {
+					identifiers = append(identifiers, typeSpec.Name.Name)
+				}
+			}
+		case *ast.FuncDecl:
+			identifiers = append(identifiers, typed.Name.Name)
+			receiverName := receiverTypeName(typed.Recv)
+			if receiverName != "" {
+				identifiers = append(identifiers, receiverName)
+			}
+		}
+	}
+	return identifiers
+}
+
+func inferredSnakeScope(scope string, identifier string) (string, bool) {
+	tokens := camelTokens(identifier)
+	for start := 0; start < len(tokens); start++ {
+		var joined strings.Builder
+		for end := start; end < len(tokens); end++ {
+			joined.WriteString(tokens[end])
+			if end-start < 1 {
+				continue
+			}
+			if joined.String() == strings.ReplaceAll(scope, "_", "") {
+				return strings.Join(tokens[start:end+1], "_"), true
+			}
+		}
+	}
+	return "", false
+}
+
+func camelTokens(value string) []string {
+	var tokens []string
+	var current []rune
+	runes := []rune(value)
+	for index, char := range runes {
+		if !unicode.IsLetter(char) && !unicode.IsDigit(char) {
+			if len(current) > 0 {
+				tokens = append(tokens, strings.ToLower(string(current)))
+				current = nil
+			}
+			continue
+		}
+		if index > 0 && len(current) > 0 && unicode.IsUpper(char) {
+			prev := runes[index-1]
+			var next rune
+			if index+1 < len(runes) {
+				next = runes[index+1]
+			}
+			if unicode.IsLower(prev) || (next != 0 && unicode.IsLower(next)) {
+				tokens = append(tokens, strings.ToLower(string(current)))
+				current = nil
+			}
+		}
+		current = append(current, char)
+	}
+	if len(current) > 0 {
+		tokens = append(tokens, strings.ToLower(string(current)))
+	}
+	return tokens
 }
 
 func parseFileName(base string) (fileName, bool) {
@@ -302,7 +398,7 @@ func declarationViolations(layer string, name fileName, filename string) ([]Viol
 			if name.scope == "x_batch" {
 				return nil, nil
 			}
-			return serviceViolations(fileSet, filename, parsedFile), nil
+			return serviceViolations(fileSet, filename, name, parsedFile), nil
 		}
 	case "store":
 		if layer == "repository" {
@@ -528,16 +624,143 @@ func errorsViolations(fileSet *token.FileSet, filename string, parsedFile *ast.F
 	return violations
 }
 
-func serviceViolations(fileSet *token.FileSet, filename string, parsedFile *ast.File) []Violation {
+func serviceViolations(fileSet *token.FileSet, filename string, name fileName, parsedFile *ast.File) []Violation {
 	var violations []Violation
+	serviceName, serviceNameOK := serviceStructName(parsedFile)
+	expectedServiceName := serviceName
+	if expectedServiceName == "" {
+		expectedServiceName = upperCamelName(name.scope) + "Service"
+	}
+	if serviceNameOK {
+		expectedScope := snakeName(strings.TrimSuffix(expectedServiceName, "Service"))
+		if name.scope != expectedScope {
+			violations = append(violations, Violation{
+				File:    rulekit.DisplayFilename(filename),
+				Line:    1,
+				Message: fmt.Sprintf("service file for %s must use scope %q", expectedServiceName, expectedScope),
+			})
+		}
+	}
+
+	hasServiceType := false
+	hasConstructor := false
 	for _, decl := range parsedFile.Decls {
-		if funcDecl, ok := decl.(*ast.FuncDecl); ok {
-			if funcDecl.Recv == nil && !strings.HasPrefix(funcDecl.Name.Name, "New") {
-				violations = append(violations, violationAt(fileSet, filename, funcDecl.Pos(), "service files must declare constructors or receiver methods"))
+		switch typed := decl.(type) {
+		case *ast.GenDecl:
+			if typed.Tok == token.IMPORT {
+				continue
+			}
+			if typed.Tok != token.TYPE {
+				violations = append(violations, violationAt(fileSet, filename, typed.Pos(), "service files must only declare the service struct"))
+				continue
+			}
+			for _, spec := range typed.Specs {
+				typeSpec, ok := spec.(*ast.TypeSpec)
+				if !ok {
+					continue
+				}
+				if typeSpec.Name.Name != expectedServiceName {
+					violations = append(violations, violationAt(fileSet, filename, typeSpec.Pos(), fmt.Sprintf("service files must only declare %s", expectedServiceName)))
+					continue
+				}
+				if _, ok := typeSpec.Type.(*ast.StructType); !ok {
+					violations = append(violations, violationAt(fileSet, filename, typeSpec.Pos(), expectedServiceName+" must be a struct"))
+					continue
+				}
+				hasServiceType = true
+			}
+		case *ast.FuncDecl:
+			if typed.Recv == nil {
+				if typed.Name.Name != "New"+expectedServiceName {
+					violations = append(violations, violationAt(fileSet, filename, typed.Pos(), "service files must only declare New"+expectedServiceName+" as a package-level function"))
+					continue
+				}
+				hasConstructor = true
+				continue
+			}
+			if receiverTypeName(typed.Recv) != expectedServiceName {
+				violations = append(violations, violationAt(fileSet, filename, typed.Pos(), "service receiver methods must use "+expectedServiceName))
 			}
 		}
 	}
+	if !hasServiceType {
+		violations = append(violations, Violation{
+			File:    rulekit.DisplayFilename(filename),
+			Line:    1,
+			Message: "service files must declare " + expectedServiceName,
+		})
+	}
+	if !hasConstructor {
+		violations = append(violations, Violation{
+			File:    rulekit.DisplayFilename(filename),
+			Line:    1,
+			Message: "service files must declare New" + expectedServiceName,
+		})
+	}
 	return violations
+}
+
+func serviceStructName(parsedFile *ast.File) (string, bool) {
+	var serviceName string
+	for _, decl := range parsedFile.Decls {
+		genDecl, ok := decl.(*ast.GenDecl)
+		if !ok || genDecl.Tok != token.TYPE {
+			continue
+		}
+		for _, spec := range genDecl.Specs {
+			typeSpec, ok := spec.(*ast.TypeSpec)
+			if !ok || !strings.HasSuffix(typeSpec.Name.Name, "Service") {
+				continue
+			}
+			if _, ok := typeSpec.Type.(*ast.StructType); !ok {
+				continue
+			}
+			if serviceName != "" {
+				return serviceName, false
+			}
+			serviceName = typeSpec.Name.Name
+		}
+	}
+	return serviceName, serviceName != ""
+}
+
+func receiverTypeName(recv *ast.FieldList) string {
+	if recv == nil || len(recv.List) == 0 {
+		return ""
+	}
+	switch typed := recv.List[0].Type.(type) {
+	case *ast.Ident:
+		return typed.Name
+	case *ast.StarExpr:
+		if ident, ok := typed.X.(*ast.Ident); ok {
+			return ident.Name
+		}
+	}
+	return ""
+}
+
+func upperCamelName(value string) string {
+	parts := strings.Split(value, "_")
+	var builder strings.Builder
+	for _, part := range parts {
+		if part == "" {
+			continue
+		}
+		builder.WriteString(strings.ToUpper(part[:1]))
+		builder.WriteString(part[1:])
+	}
+	return builder.String()
+}
+
+func snakeName(value string) string {
+	var builder strings.Builder
+	for index, char := range value {
+		if index > 0 && 'A' <= char && char <= 'Z' {
+			builder.WriteByte('_')
+		}
+		builder.WriteRune(char)
+	}
+	return strings.ToLower(builder.String())
 }
 
 func storeViolations(fileSet *token.FileSet, filename string, parsedFile *ast.File) []Violation {

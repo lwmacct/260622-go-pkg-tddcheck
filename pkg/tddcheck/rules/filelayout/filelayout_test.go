@@ -31,6 +31,11 @@ func normalizeDevice() {}
 		"internal/service/x_batch.service.go": `package service
 func NewBatchService() {}
 `,
+		"internal/service/device_group.service.go": `package service
+type DeviceGroupService struct{}
+func NewDeviceGroupService() *DeviceGroupService { return &DeviceGroupService{} }
+func (s *DeviceGroupService) ListGroups() {}
+`,
 		"internal/service/x_shared.models.go": `package service
 type DeviceRow struct{}
 `,
@@ -82,6 +87,20 @@ func validateDevice() {}
 	assertViolationContains(t, violations, "must use {scope}.{type}.go")
 }
 
+func TestViolationsRejectsJoinedMultiWordResourceScope(t *testing.T) {
+	root := fixture(t, map[string]string{
+		"internal/service/devicegroup.mapper.go": `package service
+func ToDeviceGroupRow() {}
+`,
+	})
+
+	violations, err := New(filepath.Join(root, "internal")).Violations()
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertViolationContains(t, violations, `scope "devicegroup" must use snake_case resource name "device_group"`)
+}
+
 func TestViolationsChecksTypeContent(t *testing.T) {
 	root := fixture(t, map[string]string{
 		"internal/handler/device.dto.go": `package handler
@@ -121,6 +140,27 @@ type DevicePayload struct{}
 		t.Fatal(err)
 	}
 	assertViolationContains(t, violations, "command type DevicePayload must end with Request, Response, Result, or Item")
+}
+
+func TestViolationsChecksServiceContent(t *testing.T) {
+	root := fixture(t, map[string]string{
+		"internal/service/devicegroup.service.go": `package service
+type DeviceGroupService struct{}
+type DeviceGroupHelper struct{}
+func NewDeviceGroupService() *DeviceGroupService { return &DeviceGroupService{} }
+func NewDeviceGroupHelper() {}
+func (s *DeviceGroupHelper) Bad() {}
+`,
+	})
+
+	violations, err := New(filepath.Join(root, "internal")).Violations()
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertViolationContains(t, violations, `service file for DeviceGroupService must use scope "device_group"`)
+	assertViolationContains(t, violations, "service files must only declare DeviceGroupService")
+	assertViolationContains(t, violations, "service files must only declare NewDeviceGroupService as a package-level function")
+	assertViolationContains(t, violations, "service receiver methods must use DeviceGroupService")
 }
 
 func TestViolationsChecksMapperContent(t *testing.T) {

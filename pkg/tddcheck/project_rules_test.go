@@ -22,7 +22,7 @@ func NewDeviceService() *DeviceService { return &DeviceService{} }
 `,
 		"internal/repository/device.store.go": `package repository
 import "context"
-func (s *Store) ListDevices(ctx context.Context) error { return nil }
+func (s *Store) ListDevices(ctx context.Context) ([]string, error) { return nil, nil }
 `,
 		"internal/repository/x_store.repository.go": `package repository
 type Store struct{}

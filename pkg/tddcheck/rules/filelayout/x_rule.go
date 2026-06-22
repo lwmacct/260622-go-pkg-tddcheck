@@ -180,7 +180,7 @@ func declarationViolations(layer string, name fileName, filename string) ([]Viol
 		}
 	case "store":
 		if layer == "repository" {
-			return storeViolations(fileSet, filename, parsedFile), nil
+			return storeViolations(fileSet, filename, name, parsedFile), nil
 		}
 	case "schema":
 		if layer == "repository" {

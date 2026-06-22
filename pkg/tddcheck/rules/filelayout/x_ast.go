@@ -5,6 +5,8 @@ import (
 	"go/token"
 	"slices"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/lwmacct/260622-go-pkg-tddcheck/pkg/tddcheck/rulekit"
 )
@@ -86,15 +88,52 @@ func firstParamIsContext(funcDecl *ast.FuncDecl) bool {
 }
 
 func lastResultIsError(funcDecl *ast.FuncDecl) bool {
-	if funcDecl.Type.Results == nil || len(funcDecl.Type.Results.List) == 0 {
+	results := resultExprs(funcDecl)
+	if len(results) == 0 {
 		return false
 	}
-	results := funcDecl.Type.Results.List
 	last := results[len(results)-1]
-	if ident, ok := last.Type.(*ast.Ident); ok {
+	if ident, ok := last.(*ast.Ident); ok {
 		return ident.Name == "error"
 	}
 	return false
+}
+
+func resultExprs(funcDecl *ast.FuncDecl) []ast.Expr {
+	if funcDecl.Type.Results == nil {
+		return nil
+	}
+	var results []ast.Expr
+	for _, field := range funcDecl.Type.Results.List {
+		count := len(field.Names)
+		if count == 0 {
+			count = 1
+		}
+		for range count {
+			results = append(results, field.Type)
+		}
+	}
+	return results
+}
+
+func exprIsSlice(expr ast.Expr) bool {
+	_, ok := expr.(*ast.ArrayType)
+	return ok
+}
+
+func exprIsPointer(expr ast.Expr) bool {
+	_, ok := expr.(*ast.StarExpr)
+	return ok
+}
+
+func exprIsIdent(expr ast.Expr, name string) bool {
+	ident, ok := expr.(*ast.Ident)
+	return ok && ident.Name == name
+}
+
+func startsWithUpper(value string) bool {
+	first, _ := utf8.DecodeRuneInString(value)
+	return first != utf8.RuneError && unicode.IsUpper(first)
 }
 
 func upperCamelName(value string) string {

@@ -36,6 +36,67 @@ func receiverTypeName(recv *ast.FieldList) string {
 	return ""
 }
 
+func importPath(spec *ast.ImportSpec) string {
+	return strings.Trim(spec.Path.Value, `"`)
+}
+
+func selectorPackage(expr ast.Expr) string {
+	switch typed := expr.(type) {
+	case *ast.SelectorExpr:
+		if ident, ok := typed.X.(*ast.Ident); ok {
+			return ident.Name
+		}
+	case *ast.StarExpr:
+		return selectorPackage(typed.X)
+	case *ast.ArrayType:
+		return selectorPackage(typed.Elt)
+	case *ast.MapType:
+		if value := selectorPackage(typed.Key); value != "" {
+			return value
+		}
+		return selectorPackage(typed.Value)
+	}
+	return ""
+}
+
+func hasStructTag(typeSpec *ast.TypeSpec, tagName string) bool {
+	structType, ok := typeSpec.Type.(*ast.StructType)
+	if !ok {
+		return false
+	}
+	for _, field := range structType.Fields.List {
+		if field.Tag != nil && strings.Contains(field.Tag.Value, tagName+":") {
+			return true
+		}
+		if embeddedType, ok := field.Type.(*ast.StructType); ok {
+			nested := &ast.TypeSpec{Type: embeddedType}
+			if hasStructTag(nested, tagName) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func firstParamIsContext(funcDecl *ast.FuncDecl) bool {
+	if funcDecl.Type.Params == nil || len(funcDecl.Type.Params.List) == 0 {
+		return false
+	}
+	return selectorPackage(funcDecl.Type.Params.List[0].Type) == "context"
+}
+
+func lastResultIsError(funcDecl *ast.FuncDecl) bool {
+	if funcDecl.Type.Results == nil || len(funcDecl.Type.Results.List) == 0 {
+		return false
+	}
+	results := funcDecl.Type.Results.List
+	last := results[len(results)-1]
+	if ident, ok := last.Type.(*ast.Ident); ok {
+		return ident.Name == "error"
+	}
+	return false
+}
+
 func upperCamelName(value string) string {
 	parts := strings.Split(value, "_")
 	var builder strings.Builder

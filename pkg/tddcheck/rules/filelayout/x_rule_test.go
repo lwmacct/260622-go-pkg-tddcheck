@@ -28,7 +28,7 @@ type BatchDeviceResponse struct{}
 type BatchDeviceItemResult struct{}
 type BatchUpdateDeviceItem struct{}
 `,
-		"internal/service/device.validation.go": `package service
+		"internal/service/device.support.go": `package service
 func validateDevice() {}
 func normalizeDevice() {}
 `,
@@ -40,17 +40,18 @@ type DeviceGroupService struct{}
 func NewDeviceGroupService() *DeviceGroupService { return &DeviceGroupService{} }
 func (s *DeviceGroupService) ListGroups() {}
 `,
-		"internal/service/x_shared.model.go": `package service
+		"internal/service/x_shared.support.go": `package service
 type DeviceRow struct{}
 `,
 		"internal/service/x_shared.mapper.go": `package service
 func ToRepositoryDevice() {}
 `,
-		"internal/repository/device.model.go": `package repository
+		"internal/repository/device.support.go": `package repository
 type DeviceRow struct{}
 `,
 		"internal/repository/device.store.go": `package repository
-func (s *Store) ListDevices() {}
+import "context"
+func (s *Store) ListDevices(ctx context.Context) error { return nil }
 `,
 		"internal/repository/x_store.repository.go": `package repository
 type Store struct{}
@@ -59,7 +60,7 @@ func NewStore() *Store { return &Store{} }
 		"internal/repository/x_schema.repository.go": `package repository
 func Schema() {}
 `,
-		"internal/repository/x_shared.model.go": `package repository
+		"internal/repository/x_shared.support.go": `package repository
 type DeviceCreate struct{}
 `,
 	})

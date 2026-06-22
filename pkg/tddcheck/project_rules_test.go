@@ -21,7 +21,8 @@ type DeviceService struct{}
 func NewDeviceService() *DeviceService { return &DeviceService{} }
 `,
 		"internal/repository/device.store.go": `package repository
-func (s *Store) ListDevices() {}
+import "context"
+func (s *Store) ListDevices(ctx context.Context) error { return nil }
 `,
 		"internal/repository/x_store.repository.go": `package repository
 type Store struct{}

@@ -55,9 +55,9 @@ internal/handler/x_router.handler.go
 
 internal/service/device.service.go
 internal/service/device.commands.go
-internal/service/x_shared.model.go
+internal/service/x_shared.support.go
 
-internal/repository/device.model.go
+internal/repository/device.support.go
 internal/repository/device.store.go
 internal/repository/x_database.repository.go
 ```
@@ -80,8 +80,8 @@ helper.utils.go
 
 ```text
 handler:    dto, handler, mapper, utils
-service:    commands, constants, errors, mapper, model, service, utils, validation
-repository: constants, errors, model, repository, schema, store, utils
+service:    commands, mapper, service, support
+repository: repository, schema, store, support
 ```
 
 各层允许的架构 scope：
@@ -103,32 +103,29 @@ handler:
 
 service:
   x_batch.service.go
-  x_id.validation.go
-  x_shared.errors.go, x_shared.mapper.go, x_shared.model.go, x_shared.utils.go, x_shared.validation.go
+  x_id.support.go
+  x_shared.mapper.go, x_shared.support.go
 
 repository:
   x_database.repository.go
-  x_schema.repository.go, x_schema.utils.go
+  x_schema.repository.go, x_schema.support.go
   x_store.repository.go
-  x_shared.constants.go, x_shared.errors.go, x_shared.model.go, x_shared.utils.go
+  x_shared.support.go
 ```
 
 ## 内容规则
 
 ```text
 *.commands.go   只能声明类型；类型名必须以 Request、Response、Result 或 Item 结尾
-*.constants.go  只能声明 const
 *.dto.go        只能声明 DTO/DTOs 类型；不能声明函数
-*.errors.go     只能声明错误变量、错误类型、错误辅助函数和标准错误方法
 *.handler.go    只能声明 handler 结构体、Register* 函数和 handler 方法
 *.mapper.go     只能声明包级 To* 函数
-*.model.go      只能声明类型；repository model 文件可以声明类型方法
 *.repository.go 只能用于 repository 架构文件
 *.schema.go     只能声明 schema 生命周期函数
 *.service.go    只能声明一个 Service 结构体、New*Service 和 service 方法
 *.store.go      只能声明 Store 方法
+*.support.go    可声明类型、const、Err* var、util*/validate*/normalize*/Wrap*/Is*/As* 函数
 *.utils.go      只能声明包级 util* 函数
-*.validation.go 只能声明包级 validate* 或 normalize* 函数
 ```
 
 ## 命名规则

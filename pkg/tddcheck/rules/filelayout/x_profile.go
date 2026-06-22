@@ -12,8 +12,8 @@ func hsrStrictProfile() layoutProfile {
 	return layoutProfile{
 		kindsByLayer: map[string][]string{
 			"handler":    {"dto", "handler", "mapper", "utils"},
-			"service":    {"commands", "constants", "errors", "mapper", "model", "service", "utils", "validation"},
-			"repository": {"constants", "errors", "model", "repository", "schema", "store", "utils"},
+			"service":    {"commands", "mapper", "service", "support"},
+			"repository": {"repository", "schema", "store", "support"},
 		},
 		architectureKindsByLayer: map[string]map[string][]string{
 			"handler": {
@@ -24,14 +24,14 @@ func hsrStrictProfile() layoutProfile {
 			},
 			"service": {
 				"x_batch":  {"service"},
-				"x_id":     {"validation"},
-				"x_shared": {"errors", "mapper", "model", "utils", "validation"},
+				"x_id":     {"support"},
+				"x_shared": {"mapper", "support"},
 			},
 			"repository": {
 				"x_database": {"repository"},
-				"x_schema":   {"repository", "utils"},
+				"x_schema":   {"repository", "support"},
 				"x_store":    {"repository"},
-				"x_shared":   {"constants", "errors", "model", "utils"},
+				"x_shared":   {"support"},
 			},
 		},
 		escapedScopeSuffixes: []string{
@@ -50,6 +50,7 @@ func hsrStrictProfile() layoutProfile {
 			"schema",
 			"service",
 			"store",
+			"support",
 			"update",
 			"upsert",
 			"utils",

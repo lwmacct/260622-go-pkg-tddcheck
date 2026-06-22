@@ -167,14 +167,10 @@ func declarationViolations(layer string, name fileName, filename string) ([]Viol
 		return mapperViolations(fileSet, filename, parsedFile), nil
 	case "commands":
 		return commandsViolations(fileSet, filename, parsedFile), nil
-	case "constants":
-		return constantsViolations(fileSet, filename, parsedFile), nil
-	case "validation":
-		return validationViolations(fileSet, filename, parsedFile), nil
-	case "errors":
-		return errorsViolations(fileSet, filename, parsedFile), nil
 	case "utils":
 		return utilsViolations(fileSet, filename, parsedFile), nil
+	case "support":
+		return supportViolations(fileSet, filename, layer, parsedFile), nil
 	case "service":
 		if layer == "service" {
 			if name.scope == "x_batch" {
@@ -194,11 +190,6 @@ func declarationViolations(layer string, name fileName, filename string) ([]Viol
 		if layer == "repository" {
 			return repositoryViolations(fileSet, filename, name, parsedFile), nil
 		}
-	case "model":
-		if layer == "repository" && name.kind == "model" {
-			return repositoryModelViolations(fileSet, filename, parsedFile), nil
-		}
-		return typeOnlyViolations(fileSet, filename, parsedFile, name.kind+" files must only declare types"), nil
 	}
 	return nil, nil
 }

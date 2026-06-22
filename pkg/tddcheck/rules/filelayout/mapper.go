@@ -17,9 +17,9 @@ func mapperViolations(fileSet *token.FileSet, filename string, parsedFile *ast.F
 					if !ok {
 						continue
 					}
-					importPath := strings.Trim(spec.Path.Value, `"`)
-					if forbiddenMapperImport(importPath) {
-						violations = append(violations, violationAt(fileSet, filename, spec.Pos(), "mapper files must not import "+importPath))
+					path := importPath(spec)
+					if forbiddenMapperImport(path) {
+						violations = append(violations, violationAt(fileSet, filename, spec.Pos(), "mapper files must not import "+path))
 					}
 				}
 			} else {

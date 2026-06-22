@@ -106,6 +106,52 @@ func checkDevice() {}
 	assertViolationContains(t, violations, "validation functions must be package-level validate* or normalize*")
 }
 
+func TestViolationsRejectsArchitectureScopeWithoutPrefix(t *testing.T) {
+	root := fixture(t, map[string]string{
+		"internal/service/shared.models.go": `package service
+type SharedModel struct{}
+`,
+		"internal/service/batch.service.go": `package service
+func NewBatchService() {}
+`,
+	})
+
+	violations, err := New(filepath.Join(root, "internal")).Violations()
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertViolationContains(t, violations, `architecture scope "shared" must use x_shared prefix`)
+	assertViolationContains(t, violations, `architecture scope "batch" must use x_batch prefix`)
+}
+
+func TestViolationsRejectsEscapedTypeInResourceScope(t *testing.T) {
+	root := fixture(t, map[string]string{
+		"internal/service/device_update.utils.go": `package service
+func updateDevice() {}
+`,
+	})
+
+	violations, err := New(filepath.Join(root, "internal")).Violations()
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertViolationContains(t, violations, `scope "device_update" must not encode file type`)
+}
+
+func TestViolationsRejectsArchitectureScopeInWrongLayer(t *testing.T) {
+	root := fixture(t, map[string]string{
+		"internal/service/x_database.service.go": `package service
+func NewDatabaseService() {}
+`,
+	})
+
+	violations, err := New(filepath.Join(root, "internal")).Violations()
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertViolationContains(t, violations, `architecture scope "x_database" must not use x_database.service.go in service`)
+}
+
 func fixture(t *testing.T, files map[string]string) string {
 	t.Helper()
 

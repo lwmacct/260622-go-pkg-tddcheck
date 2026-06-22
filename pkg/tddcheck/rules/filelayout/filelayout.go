@@ -101,11 +101,27 @@ func violationsInFile(config rulekit.Config, layer string, filename string) ([]V
 			Message: fmt.Sprintf("scope %q is too weak; use a resource name or approved shared scope", parsed.scope),
 		})
 	}
-	if escapedKind, ok := escapedKindScope(parsed.scope); ok {
+	if !strings.HasPrefix(parsed.scope, "x_") {
+		if escapedKind, ok := escapedKindScope(parsed.scope); ok {
+			violations = append(violations, Violation{
+				File:    rulekit.DisplayFilename(filename),
+				Line:    1,
+				Message: fmt.Sprintf("scope %q must not encode file type %q; use the resource scope and a single type suffix", parsed.scope, escapedKind),
+			})
+		}
+	}
+	if !strings.HasPrefix(parsed.scope, "x_") && reservedArchitectureScope(parsed.scope) {
 		violations = append(violations, Violation{
 			File:    rulekit.DisplayFilename(filename),
 			Line:    1,
-			Message: fmt.Sprintf("scope %q must not encode file type %q; use the resource scope and a single type suffix", parsed.scope, escapedKind),
+			Message: fmt.Sprintf("architecture scope %q must use x_%s prefix", parsed.scope, parsed.scope),
+		})
+	}
+	if strings.HasPrefix(parsed.scope, "x_") && !reservedArchitectureScope(strings.TrimPrefix(parsed.scope, "x_")) {
+		violations = append(violations, Violation{
+			File:    rulekit.DisplayFilename(filename),
+			Line:    1,
+			Message: fmt.Sprintf("architecture scope %q is not reserved", parsed.scope),
 		})
 	}
 	if !allowedKind(layer, parsed.kind) {
@@ -115,11 +131,11 @@ func violationsInFile(config rulekit.Config, layer string, filename string) ([]V
 			Message: fmt.Sprintf("%s file type %q is not allowed", layer, parsed.kind),
 		})
 	}
-	if sharedScope(parsed.scope, config) && !allowedSharedKind(layer, parsed.scope, parsed.kind) {
+	if strings.HasPrefix(parsed.scope, "x_") && !allowedArchitectureKind(layer, parsed.scope, parsed.kind) {
 		violations = append(violations, Violation{
 			File:    rulekit.DisplayFilename(filename),
 			Line:    1,
-			Message: fmt.Sprintf("shared scope %q must not use %s.%s.go in %s", parsed.scope, parsed.scope, parsed.kind, layer),
+			Message: fmt.Sprintf("architecture scope %q must not use %s.%s.go in %s", parsed.scope, parsed.scope, parsed.kind, layer),
 		})
 	}
 
@@ -164,7 +180,7 @@ func allowedKind(layer string, kind string) bool {
 	case "handler":
 		return oneOf(kind, "dto", "handler", "mapper", "utils")
 	case "service":
-		return oneOf(kind, "commands", "constants", "errors", "models", "service", "utils", "validation", "writes")
+		return oneOf(kind, "commands", "constants", "errors", "mapper", "models", "service", "utils", "validation", "writes")
 	case "repository":
 		return oneOf(kind, "constants", "database", "errors", "model", "models", "repository", "schema", "store", "utils")
 	default:
@@ -172,48 +188,42 @@ func allowedKind(layer string, kind string) bool {
 	}
 }
 
-func allowedSharedKind(layer string, scope string, kind string) bool {
+func allowedArchitectureKind(layer string, scope string, kind string) bool {
 	switch layer {
 	case "handler":
 		switch scope {
-		case "api", "frontend", "router", "shared":
+		case "x_api", "x_frontend", "x_router", "x_shared":
 			return oneOf(kind, "handler", "utils")
 		default:
 			return false
 		}
 	case "service":
 		switch scope {
-		case "batch":
+		case "x_batch":
 			return kind == "service"
-		case "ids", "shared":
-			return oneOf(kind, "errors", "models", "utils", "validation")
-		case "repository":
-			return oneOf(kind, "models", "writes")
+		case "x_id":
+			return kind == "validation"
+		case "x_shared":
+			return oneOf(kind, "errors", "mapper", "models", "utils", "validation", "writes")
 		default:
 			return false
 		}
 	case "repository":
 		switch scope {
-		case "database":
+		case "x_database":
 			return kind == "repository"
-		case "schema":
+		case "x_schema":
 			return oneOf(kind, "repository", "utils")
-		case "store":
+		case "x_store":
 			return kind == "repository"
-		case "shared":
-			return oneOf(kind, "constants", "errors", "utils")
-		case "write":
-			return kind == "models"
+		case "x_shared":
+			return oneOf(kind, "constants", "errors", "models", "utils")
 		default:
 			return false
 		}
 	default:
 		return false
 	}
-}
-
-func sharedScope(scope string, config rulekit.Config) bool {
-	return rulekit.StringIn(scope, config.AllowedSharedScopes)
 }
 
 func escapedKindScope(scope string) (string, bool) {
@@ -241,6 +251,24 @@ func escapedKindScope(scope string) (string, bool) {
 	return "", false
 }
 
+func reservedArchitectureScope(scope string) bool {
+	return oneOf(
+		scope,
+		"api",
+		"batch",
+		"database",
+		"frontend",
+		"id",
+		"ids",
+		"repository",
+		"router",
+		"schema",
+		"shared",
+		"store",
+		"write",
+	)
+}
+
 func declarationViolations(layer string, name fileName, filename string) ([]Violation, error) {
 	fileSet := token.NewFileSet()
 	parsedFile, err := parser.ParseFile(fileSet, filename, nil, parser.SkipObjectResolution)
@@ -263,7 +291,7 @@ func declarationViolations(layer string, name fileName, filename string) ([]Viol
 		return errorsViolations(fileSet, filename, parsedFile), nil
 	case "service":
 		if layer == "service" {
-			if name.scope == "batch" {
+			if name.scope == "x_batch" {
 				return nil, nil
 			}
 			return serviceViolations(fileSet, filename, parsedFile), nil
@@ -279,9 +307,6 @@ func declarationViolations(layer string, name fileName, filename string) ([]Viol
 	case "model", "models", "writes":
 		if layer == "repository" && name.kind == "model" {
 			return repositoryModelViolations(fileSet, filename, parsedFile), nil
-		}
-		if layer == "service" && name.scope == "repository" && oneOf(name.kind, "models", "writes") {
-			return mapperViolations(fileSet, filename, parsedFile), nil
 		}
 		return typeOnlyViolations(fileSet, filename, parsedFile, name.kind+" files must only declare types"), nil
 	}

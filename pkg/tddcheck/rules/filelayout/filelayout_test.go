@@ -15,7 +15,7 @@ type DeviceDTO struct{}
 		"internal/handler/device.mapper.go": `package handler
 func toDeviceDTO() DeviceDTO { return DeviceDTO{} }
 `,
-		"internal/handler/router.handler.go": `package handler
+		"internal/handler/x_router.handler.go": `package handler
 func registerRoutes() {}
 `,
 		"internal/service/device.commands.go": `package service
@@ -25,10 +25,13 @@ type CreateDeviceRequest struct{}
 func validateDevice() {}
 func normalizeDevice() {}
 `,
-		"internal/service/batch.service.go": `package service
+		"internal/service/x_batch.service.go": `package service
 func NewBatchService() {}
 `,
-		"internal/service/repository.models.go": `package service
+		"internal/service/x_shared.models.go": `package service
+type DeviceRow struct{}
+`,
+		"internal/service/x_shared.mapper.go": `package service
 func fromRepositoryDevice() {}
 `,
 		"internal/repository/device.model.go": `package repository
@@ -37,14 +40,14 @@ type DeviceRow struct{}
 		"internal/repository/device.store.go": `package repository
 func (s *Store) ListDevices() {}
 `,
-		"internal/repository/store.repository.go": `package repository
+		"internal/repository/x_store.repository.go": `package repository
 type Store struct{}
 func NewStore() *Store { return &Store{} }
 `,
-		"internal/repository/schema.repository.go": `package repository
+		"internal/repository/x_schema.repository.go": `package repository
 func Schema() {}
 `,
-		"internal/repository/write.models.go": `package repository
+		"internal/repository/x_shared.models.go": `package repository
 type DeviceCreate struct{}
 `,
 	})

@@ -101,6 +101,13 @@ func violationsInFile(config rulekit.Config, layer string, filename string) ([]V
 			Message: fmt.Sprintf("scope %q is too weak; use a resource name or approved shared scope", parsed.scope),
 		})
 	}
+	if escapedKind, ok := escapedKindScope(parsed.scope); ok {
+		violations = append(violations, Violation{
+			File:    rulekit.DisplayFilename(filename),
+			Line:    1,
+			Message: fmt.Sprintf("scope %q must not encode file type %q; use the resource scope and a single type suffix", parsed.scope, escapedKind),
+		})
+	}
 	if !allowedKind(layer, parsed.kind) {
 		violations = append(violations, Violation{
 			File:    rulekit.DisplayFilename(filename),
@@ -179,7 +186,7 @@ func allowedSharedKind(layer string, scope string, kind string) bool {
 		case "batch":
 			return kind == "service"
 		case "ids", "shared":
-			return oneOf(kind, "utils", "validation")
+			return oneOf(kind, "errors", "models", "utils", "validation")
 		case "repository":
 			return oneOf(kind, "models", "writes")
 		default:
@@ -190,11 +197,11 @@ func allowedSharedKind(layer string, scope string, kind string) bool {
 		case "database":
 			return kind == "repository"
 		case "schema":
-			return kind == "repository"
+			return oneOf(kind, "repository", "utils")
 		case "store":
 			return kind == "repository"
 		case "shared":
-			return kind == "utils"
+			return oneOf(kind, "constants", "errors", "utils")
 		case "write":
 			return kind == "models"
 		default:
@@ -207,6 +214,31 @@ func allowedSharedKind(layer string, scope string, kind string) bool {
 
 func sharedScope(scope string, config rulekit.Config) bool {
 	return rulekit.StringIn(scope, config.AllowedSharedScopes)
+}
+
+func escapedKindScope(scope string) (string, bool) {
+	for _, kind := range []string{
+		"commands",
+		"constants",
+		"dto",
+		"errors",
+		"handler",
+		"mapper",
+		"model",
+		"models",
+		"repository",
+		"schema",
+		"service",
+		"store",
+		"utils",
+		"validation",
+		"writes",
+	} {
+		if strings.HasSuffix(scope, "_"+kind) {
+			return kind, true
+		}
+	}
+	return "", false
 }
 
 func declarationViolations(layer string, name fileName, filename string) ([]Violation, error) {
@@ -231,6 +263,9 @@ func declarationViolations(layer string, name fileName, filename string) ([]Viol
 		return errorsViolations(fileSet, filename, parsedFile), nil
 	case "service":
 		if layer == "service" {
+			if name.scope == "batch" {
+				return nil, nil
+			}
 			return serviceViolations(fileSet, filename, parsedFile), nil
 		}
 	case "store":
@@ -242,6 +277,12 @@ func declarationViolations(layer string, name fileName, filename string) ([]Viol
 			return schemaViolations(fileSet, filename, parsedFile), nil
 		}
 	case "model", "models", "writes":
+		if layer == "repository" && name.kind == "model" {
+			return repositoryModelViolations(fileSet, filename, parsedFile), nil
+		}
+		if layer == "service" && name.scope == "repository" && oneOf(name.kind, "models", "writes") {
+			return mapperViolations(fileSet, filename, parsedFile), nil
+		}
 		return typeOnlyViolations(fileSet, filename, parsedFile, name.kind+" files must only declare types"), nil
 	}
 	return nil, nil
@@ -297,6 +338,25 @@ func typeOnlyViolations(fileSet *token.FileSet, filename string, parsedFile *ast
 			continue
 		}
 		violations = append(violations, violationAt(fileSet, filename, decl.Pos(), message))
+	}
+	return violations
+}
+
+func repositoryModelViolations(fileSet *token.FileSet, filename string, parsedFile *ast.File) []Violation {
+	var violations []Violation
+	for _, decl := range parsedFile.Decls {
+		switch typed := decl.(type) {
+		case *ast.GenDecl:
+			if typed.Tok == token.IMPORT || typed.Tok == token.TYPE {
+				continue
+			}
+			violations = append(violations, violationAt(fileSet, filename, typed.Pos(), "repository model files must only declare types and model receiver methods"))
+		case *ast.FuncDecl:
+			if typed.Recv != nil {
+				continue
+			}
+			violations = append(violations, violationAt(fileSet, filename, typed.Pos(), "repository model files must not declare package-level functions"))
+		}
 	}
 	return violations
 }
@@ -384,7 +444,8 @@ func schemaViolations(fileSet *token.FileSet, filename string, parsedFile *ast.F
 	var violations []Violation
 	for _, decl := range parsedFile.Decls {
 		if funcDecl, ok := decl.(*ast.FuncDecl); ok && funcDecl.Recv == nil {
-			if !oneOf(funcDecl.Name.Name, "Schema", "CreateIndexes", "CreateSchema", "EnsureSchema") {
+			if !oneOf(funcDecl.Name.Name, "Schema", "CreateIndexes", "CreateSchema", "EnsureSchema") &&
+				!strings.HasSuffix(funcDecl.Name.Name, "Schema") {
 				violations = append(violations, violationAt(fileSet, filename, funcDecl.Pos(), "schema package-level functions must be schema lifecycle functions"))
 			}
 		}

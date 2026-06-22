@@ -29,7 +29,7 @@ func normalizeDevice() {}
 func NewBatchService() {}
 `,
 		"internal/service/repository.models.go": `package service
-type RepositoryDevice struct{}
+func fromRepositoryDevice() {}
 `,
 		"internal/repository/device.model.go": `package repository
 type DeviceRow struct{}

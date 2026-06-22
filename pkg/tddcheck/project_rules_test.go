@@ -11,6 +11,9 @@ func TestProjectRulesCheckPassesValidHSRLayout(t *testing.T) {
 	root := fixture(t, map[string]string{
 		"internal/handler/device.handler.go": `package handler
 import _ "example.com/app/internal/service"
+type deviceHandler struct{}
+func RegisterDevices() {}
+func (h deviceHandler) list() {}
 `,
 		"internal/service/device.service.go": `package service
 import _ "example.com/app/internal/repository"

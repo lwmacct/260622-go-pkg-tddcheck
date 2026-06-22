@@ -18,6 +18,12 @@ func ToDeviceDTO() DeviceDTO { return DeviceDTO{} }
 		"internal/handler/x_router.handler.go": `package handler
 func registerRoutes() {}
 `,
+		"internal/handler/device_group.handler.go": `package handler
+type deviceGroupHandler struct{}
+func RegisterDeviceGroups() {}
+func RegisterPublicDeviceGroups() {}
+func (h deviceGroupHandler) list() {}
+`,
 		"internal/service/device.commands.go": `package service
 type CreateDeviceRequest struct{}
 type BatchDeviceResponse struct{}
@@ -161,6 +167,26 @@ func (s *DeviceGroupHelper) Bad() {}
 	assertViolationContains(t, violations, "service files must only declare DeviceGroupService")
 	assertViolationContains(t, violations, "service files must only declare NewDeviceGroupService as a package-level function")
 	assertViolationContains(t, violations, "service receiver methods must use DeviceGroupService")
+}
+
+func TestViolationsChecksHandlerContent(t *testing.T) {
+	root := fixture(t, map[string]string{
+		"internal/handler/device_group.handler.go": `package handler
+type deviceGroupHandler struct{}
+type deviceGroupHelper struct{}
+func RegisterDeviceGroups() {}
+func newDeviceGroupHelper() {}
+func (h deviceGroupHelper) list() {}
+`,
+	})
+
+	violations, err := New(filepath.Join(root, "internal")).Violations()
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertViolationContains(t, violations, "handler files must only declare deviceGroupHandler")
+	assertViolationContains(t, violations, "handler files must only declare Register* package-level functions")
+	assertViolationContains(t, violations, "handler receiver methods must use deviceGroupHandler")
 }
 
 func TestViolationsChecksMapperContent(t *testing.T) {

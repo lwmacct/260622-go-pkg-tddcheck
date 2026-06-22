@@ -21,8 +21,10 @@ type DeviceService struct{}
 func NewDeviceService() *DeviceService { return &DeviceService{} }
 `,
 		"internal/repository/device.store.go": `package repository
-type Store struct{}
 func (s *Store) ListDevices() {}
+`,
+		"internal/repository/x_store.repository.go": `package repository
+type Store struct{}
 `,
 	})
 

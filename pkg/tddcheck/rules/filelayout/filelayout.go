@@ -840,9 +840,15 @@ func snakeName(value string) string {
 func storeViolations(fileSet *token.FileSet, filename string, parsedFile *ast.File) []Violation {
 	var violations []Violation
 	for _, decl := range parsedFile.Decls {
-		if funcDecl, ok := decl.(*ast.FuncDecl); ok {
-			if funcDecl.Recv == nil && !strings.HasPrefix(funcDecl.Name.Name, "New") {
-				violations = append(violations, violationAt(fileSet, filename, funcDecl.Pos(), "store files must declare constructors or Store receiver methods"))
+		switch typed := decl.(type) {
+		case *ast.GenDecl:
+			if typed.Tok == token.IMPORT {
+				continue
+			}
+			violations = append(violations, violationAt(fileSet, filename, typed.Pos(), "store files must only declare Store receiver methods"))
+		case *ast.FuncDecl:
+			if receiverTypeName(typed.Recv) != "Store" {
+				violations = append(violations, violationAt(fileSet, filename, typed.Pos(), "store files must only declare Store receiver methods"))
 			}
 		}
 	}

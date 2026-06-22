@@ -20,6 +20,9 @@ func registerRoutes() {}
 `,
 		"internal/service/device.commands.go": `package service
 type CreateDeviceRequest struct{}
+type BatchDeviceResponse struct{}
+type BatchDeviceItemResult struct{}
+type BatchUpdateDeviceItem struct{}
 `,
 		"internal/service/device.validation.go": `package service
 func validateDevice() {}
@@ -104,6 +107,20 @@ func checkDevice() {}
 	assertViolationContains(t, violations, "commands files must only declare types")
 	assertViolationContains(t, violations, "validation files must not declare types")
 	assertViolationContains(t, violations, "validation functions must be package-level validate* or normalize*")
+}
+
+func TestViolationsChecksCommandsTypeNames(t *testing.T) {
+	root := fixture(t, map[string]string{
+		"internal/service/device.commands.go": `package service
+type DevicePayload struct{}
+`,
+	})
+
+	violations, err := New(filepath.Join(root, "internal")).Violations()
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertViolationContains(t, violations, "command type DevicePayload must end with Request, Response, Result, or Item")
 }
 
 func TestViolationsChecksMapperContent(t *testing.T) {

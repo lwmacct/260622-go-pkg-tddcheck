@@ -100,6 +100,19 @@ x_database.service.go
 helper.utils.go
 ```
 
+## Command Types
+
+Service command files declare service-level contracts.
+
+Rules:
+
+```text
+*.commands.go files must only declare types
+*.commands.go type names must end with Request, Response, Result, or Item
+```
+
+Move plain data models to `*.models.go` instead of widening the command suffix list with business-specific words.
+
 ## Mapper Functions
 
 Mapper files are for pure package-level conversion functions.

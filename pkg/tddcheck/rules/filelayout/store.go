@@ -51,7 +51,7 @@ func storeMethodNameViolation(funcDecl *ast.FuncDecl, expectedSubjectPrefix stri
 		}
 		return ""
 	}
-	_, subject, ok := splitStoreMethodName(name)
+	action, subject, ok := splitStoreMethodName(name)
 	if !ok {
 		return "store method names must start with List, Fetch, Create, Update, Delete, Upsert, Add, Remove, or Replace"
 	}
@@ -61,13 +61,50 @@ func storeMethodNameViolation(funcDecl *ast.FuncDecl, expectedSubjectPrefix stri
 	if !startsWithUpper(subject) {
 		return "store method names must use Action+UpperCamelSubject"
 	}
-	if !strings.HasPrefix(subject, expectedSubjectPrefix) {
-		return "exported store method subjects must start with " + expectedSubjectPrefix
+	if message := storeMethodSubjectViolation(action, subject, expectedSubjectPrefix); message != "" {
+		return message
 	}
 	if storeMethodNameExposesQuery(subject) {
 		return "store method names must not expose query implementation details"
 	}
 	return ""
+}
+
+func storeMethodSubjectViolation(action string, subject string, expected string) string {
+	if strings.HasPrefix(subject, expected) {
+		rest := strings.TrimPrefix(subject, expected)
+		if rest == "" || startsWithUpper(rest) {
+			return ""
+		}
+	}
+	plural := pluralSubject(expected)
+	if action == "List" && strings.HasPrefix(subject, plural) {
+		rest := strings.TrimPrefix(subject, plural)
+		if rest == "" || explicitListQualifier(rest) {
+			return ""
+		}
+		return "List store method qualifiers after plural subjects must start with By, For, With, or Without"
+	}
+	return "exported store method subjects must start with " + expected + " as an exact resource segment"
+}
+
+func explicitListQualifier(rest string) bool {
+	return strings.HasPrefix(rest, "By") ||
+		strings.HasPrefix(rest, "For") ||
+		strings.HasPrefix(rest, "With") ||
+		strings.HasPrefix(rest, "Without")
+}
+
+func pluralSubject(subject string) string {
+	if strings.HasSuffix(subject, "y") {
+		return strings.TrimSuffix(subject, "y") + "ies"
+	}
+	for _, suffix := range []string{"s", "x", "z", "ch", "sh"} {
+		if strings.HasSuffix(subject, suffix) {
+			return subject + "es"
+		}
+	}
+	return subject + "s"
 }
 
 func storeMethodNameExposesQuery(name string) bool {

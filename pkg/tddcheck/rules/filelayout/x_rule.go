@@ -76,6 +76,7 @@ func (r Rules) Violations() ([]Violation, error) {
 }
 
 func violationsInFile(config rulekit.Config, layer string, filename string) ([]Violation, error) {
+	profile := hsrStrictProfile()
 	base := filepath.Base(filename)
 	parsed, ok := parseFileName(base)
 	if !ok {
@@ -94,8 +95,8 @@ func violationsInFile(config rulekit.Config, layer string, filename string) ([]V
 			Message: fmt.Sprintf("scope %q is too weak; use a resource name or approved shared scope", parsed.scope),
 		})
 	}
-	if !strings.HasPrefix(parsed.scope, "x_") {
-		if escapedKind, ok := escapedKindScope(parsed.scope); ok {
+	if !strings.HasPrefix(parsed.scope, architectureScopePrefix) {
+		if escapedKind, ok := escapedKindScope(profile, parsed.scope); ok {
 			violations = append(violations, Violation{
 				File:    rulekit.DisplayFilename(filename),
 				Line:    1,
@@ -103,28 +104,28 @@ func violationsInFile(config rulekit.Config, layer string, filename string) ([]V
 			})
 		}
 	}
-	if !strings.HasPrefix(parsed.scope, "x_") && reservedArchitectureScope(parsed.scope) {
+	if !strings.HasPrefix(parsed.scope, architectureScopePrefix) && profile.architectureScopeReserved(parsed.scope) {
 		violations = append(violations, Violation{
 			File:    rulekit.DisplayFilename(filename),
 			Line:    1,
 			Message: fmt.Sprintf("architecture scope %q must use x_%s prefix", parsed.scope, parsed.scope),
 		})
 	}
-	if strings.HasPrefix(parsed.scope, "x_") && !reservedArchitectureScope(strings.TrimPrefix(parsed.scope, "x_")) {
+	if strings.HasPrefix(parsed.scope, architectureScopePrefix) && !profile.architectureScopeReserved(strings.TrimPrefix(parsed.scope, architectureScopePrefix)) {
 		violations = append(violations, Violation{
 			File:    rulekit.DisplayFilename(filename),
 			Line:    1,
 			Message: fmt.Sprintf("architecture scope %q is not reserved", parsed.scope),
 		})
 	}
-	if !allowedKind(layer, parsed.kind) {
+	if !profile.kindAllowed(layer, parsed.kind) {
 		violations = append(violations, Violation{
 			File:    rulekit.DisplayFilename(filename),
 			Line:    1,
 			Message: fmt.Sprintf("%s file type %q is not allowed", layer, parsed.kind),
 		})
 	}
-	if strings.HasPrefix(parsed.scope, "x_") && !allowedArchitectureKind(layer, parsed.scope, parsed.kind) {
+	if strings.HasPrefix(parsed.scope, architectureScopePrefix) && !profile.architectureKindAllowed(layer, parsed.scope, parsed.kind) {
 		violations = append(violations, Violation{
 			File:    rulekit.DisplayFilename(filename),
 			Line:    1,
@@ -156,7 +157,10 @@ func declarationViolations(layer string, name fileName, filename string) ([]Viol
 	case "dto":
 		return dtoViolations(fileSet, filename, parsedFile), nil
 	case "handler":
-		if layer == "handler" && !strings.HasPrefix(name.scope, "x_") {
+		if layer == "handler" {
+			if strings.HasPrefix(name.scope, architectureScopePrefix) {
+				return architectureHandlerViolations(fileSet, filename, parsedFile), nil
+			}
 			return handlerViolations(fileSet, filename, name, parsedFile), nil
 		}
 	case "mapper":
@@ -186,7 +190,11 @@ func declarationViolations(layer string, name fileName, filename string) ([]Viol
 		if layer == "repository" {
 			return schemaViolations(fileSet, filename, parsedFile), nil
 		}
-	case "model", "models", "writes":
+	case "repository":
+		if layer == "repository" {
+			return repositoryViolations(fileSet, filename, name, parsedFile), nil
+		}
+	case "model":
 		if layer == "repository" && name.kind == "model" {
 			return repositoryModelViolations(fileSet, filename, parsedFile), nil
 		}

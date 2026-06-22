@@ -1,16 +1,16 @@
 # go-pkg-tddcheck
 
-`tddcheck` provides mechanical architecture checks for Go projects using a compact handler/service/repository layout.
+`tddcheck` 用于检查 Go 项目的 handler/service/repository 分层约束。
 
-## Usage
+## 使用方式
 
-Run as a CLI:
+命令行运行：
 
 ```bash
 go run ./cmd/tddcheck -root internal
 ```
 
-Run from a project test:
+在项目测试中引用：
 
 ```go
 package tddcheck_test
@@ -18,51 +18,73 @@ package tddcheck_test
 import (
 	"testing"
 
-	"github.com/lwmacct/260622-go-pkg-tddcheck/pkg/tddcheck/rules/filelayout"
-	"github.com/lwmacct/260622-go-pkg-tddcheck/pkg/tddcheck/rules/layerdeps"
+	"github.com/lwmacct/260622-go-pkg-tddcheck/pkg/tddcheck"
 )
 
 func TestRules(t *testing.T) {
-	t.Run("file-layout", func(t *testing.T) {
-		filelayout.New("internal").Assert(t)
-	})
-	t.Run("dependency-layerdeps", func(t *testing.T) {
-		layerdeps.New("internal").Assert(t)
-	})
+	tddcheck.ProjectRules{Root: "internal"}.Assert(t)
 }
 ```
 
-Use `-count=1` when running architecture checks from Go tests:
+运行本地架构检查时建议使用：
 
 ```bash
 go test -count=1 ./internal/testutil/tddcheck
 ```
 
-## File Layout
+## 文件命名
 
-Business resource files use:
+资源文件必须使用：
 
 ```text
 {resource}.{type}.go
 ```
 
-Architecture and shared files use:
+架构/共享文件必须使用：
 
 ```text
 x_{scope}.{type}.go
 ```
 
-The `x_` prefix makes non-resource files visible and keeps generic scopes from colliding with business resource names.
+示例：
 
-Allowed file types:
+```text
+internal/handler/device.handler.go
+internal/handler/device.dto.go
+internal/handler/x_router.handler.go
+
+internal/service/device.service.go
+internal/service/device.commands.go
+internal/service/x_shared.model.go
+
+internal/repository/device.model.go
+internal/repository/device.store.go
+internal/repository/x_database.repository.go
+```
+
+拒绝示例：
+
+```text
+device_handler.go
+shared.model.go
+device_update.utils.go
+device.models.go
+device.writes.go
+device.database.go
+helper.utils.go
+```
+
+## 文件类型
+
+各层允许的文件类型：
 
 ```text
 handler:    dto, handler, mapper, utils
-service:    commands, constants, errors, mapper, models, service, utils, validation, writes
-repository: constants, database, errors, model, models, repository, schema, store, utils
+service:    commands, constants, errors, mapper, model, service, utils, validation
+repository: constants, errors, model, repository, schema, store, utils
 ```
 
-Allowed architecture scopes:
+各层允许的架构 scope：
 
 ```text
 handler:    x_api, x_frontend, x_router, x_shared
@@ -70,75 +92,59 @@ service:    x_batch, x_id, x_shared
 repository: x_database, x_schema, x_store, x_shared
 ```
 
-Examples:
+允许的架构文件：
 
 ```text
-internal/handler/device.dto.go
-internal/handler/device.handler.go
-internal/handler/x_router.handler.go
+handler:
+  x_api.handler.go, x_api.utils.go
+  x_frontend.handler.go, x_frontend.utils.go
+  x_router.handler.go, x_router.utils.go
+  x_shared.handler.go, x_shared.utils.go
 
-internal/service/device.commands.go
-internal/service/device.service.go
-internal/service/x_batch.service.go
-internal/service/x_id.validation.go
-internal/service/x_shared.models.go
+service:
+  x_batch.service.go
+  x_id.validation.go
+  x_shared.errors.go, x_shared.mapper.go, x_shared.model.go, x_shared.utils.go, x_shared.validation.go
 
-internal/repository/device.model.go
-internal/repository/device.store.go
-internal/repository/x_database.repository.go
-internal/repository/x_schema.utils.go
-internal/repository/x_store.repository.go
+repository:
+  x_database.repository.go
+  x_schema.repository.go, x_schema.utils.go
+  x_store.repository.go
+  x_shared.constants.go, x_shared.errors.go, x_shared.model.go, x_shared.utils.go
 ```
 
-Rejected examples:
+## 内容规则
 
 ```text
-shared.models.go
-batch.service.go
-device_update.utils.go
-x_database.service.go
-helper.utils.go
+*.commands.go   只能声明类型；类型名必须以 Request、Response、Result 或 Item 结尾
+*.constants.go  只能声明 const
+*.dto.go        只能声明 DTO/DTOs 类型；不能声明函数
+*.errors.go     只能声明错误变量、错误类型、错误辅助函数和标准错误方法
+*.handler.go    只能声明 handler 结构体、Register* 函数和 handler 方法
+*.mapper.go     只能声明包级 To* 函数
+*.model.go      只能声明类型；repository model 文件可以声明类型方法
+*.repository.go 只能用于 repository 架构文件
+*.schema.go     只能声明 schema 生命周期函数
+*.service.go    只能声明一个 Service 结构体、New*Service 和 service 方法
+*.store.go      只能声明 Store 方法
+*.utils.go      只能声明包级 util* 函数
+*.validation.go 只能声明包级 validate* 或 normalize* 函数
 ```
 
-## Command Types
-
-Service command files declare service-level contracts.
-
-Rules:
+## 命名规则
 
 ```text
-*.commands.go files must only declare types
-*.commands.go type names must end with Request, Response, Result, or Item
+资源 scope 使用 snake_case
+架构 scope 使用 x_ 前缀
+禁止使用 common、default、helper、helpers、misc、util、utils 等弱 scope
+资源 scope 不能包含 update、mapper、service、store、validation 等文件类型词
+mapper 函数必须以 To 开头
+utils 函数必须以 util 开头
 ```
 
-Move plain data models to `*.models.go` instead of widening the command suffix list with business-specific words.
+## 分层依赖
 
-## Mapper Functions
-
-Mapper files are for pure package-level conversion functions.
-
-Rules:
-
-```text
-*.mapper.go functions must start with To
-*.mapper.go functions must not use receivers
-*.mapper.go files must not declare types, vars, or consts
-*.mapper.go files must not import context, HTTP, database, or ORM packages
-```
-
-Recommended names:
-
-```text
-ToDeviceDTO             service model -> handler DTO
-ToServiceCreateDevice   handler DTO -> service command
-ToRepositoryDevicePatch service command -> repository command
-```
-
-Avoid `Map*`, `From*`, `Build*`, and `Convert*`; they hide the target type and make mapper direction harder to read at call sites.
-
-## Layer Dependencies
-
-Default forbidden imports:
+默认禁止的 import：
 
 ```text
 handler    -> repository

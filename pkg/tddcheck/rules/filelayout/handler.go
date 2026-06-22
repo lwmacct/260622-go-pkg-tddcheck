@@ -70,3 +70,38 @@ func handlerViolations(fileSet *token.FileSet, filename string, name fileName, p
 	}
 	return violations
 }
+
+func architectureHandlerViolations(fileSet *token.FileSet, filename string, parsedFile *ast.File) []Violation {
+	var violations []Violation
+	for _, decl := range parsedFile.Decls {
+		switch typed := decl.(type) {
+		case *ast.GenDecl:
+			if typed.Tok == token.IMPORT {
+				continue
+			}
+			if typed.Tok != token.TYPE {
+				violations = append(violations, violationAt(fileSet, filename, typed.Pos(), "architecture handler files must only declare wiring types and package-level functions"))
+				continue
+			}
+			for _, spec := range typed.Specs {
+				typeSpec, ok := spec.(*ast.TypeSpec)
+				if ok && !architectureHandlerType(typeSpec.Name.Name) {
+					violations = append(violations, violationAt(fileSet, filename, typeSpec.Pos(), "architecture handler types must be Config, Options, Services, or Dependencies"))
+				}
+			}
+		case *ast.FuncDecl:
+			if typed.Recv != nil {
+				violations = append(violations, violationAt(fileSet, filename, typed.Pos(), "architecture handler functions must not use receivers"))
+				continue
+			}
+			if !strings.HasPrefix(typed.Name.Name, "Register") && !strings.HasPrefix(typed.Name.Name, "New") && !lowerCamelIdentifier(typed.Name.Name) {
+				violations = append(violations, violationAt(fileSet, filename, typed.Pos(), "architecture handler functions must be Register*, New*, or private helpers"))
+			}
+		}
+	}
+	return violations
+}
+
+func architectureHandlerType(name string) bool {
+	return oneOf(name, "Config", "Options", "Services", "Dependencies")
+}

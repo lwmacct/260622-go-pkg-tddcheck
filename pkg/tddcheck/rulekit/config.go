@@ -7,7 +7,6 @@ type Config struct {
 	SkipDirs   []string
 	LayerRules []LayerDependencyRule
 
-	AllowedSharedScopes []string
 	ForbiddenWeakScopes []string
 }
 
@@ -28,19 +27,6 @@ func DefaultConfig() Config {
 			{SourceLayer: "repository", TargetLayer: "handler", Message: "repository must not import handler"},
 			{SourceLayer: "repository", TargetLayer: "service", Message: "repository must not import service"},
 		},
-		AllowedSharedScopes: []string{
-			"api",
-			"batch",
-			"database",
-			"frontend",
-			"ids",
-			"repository",
-			"router",
-			"schema",
-			"shared",
-			"store",
-			"write",
-		},
 		ForbiddenWeakScopes: []string{"common", "default", "helper", "helpers", "misc", "util", "utils"},
 	}
 }
@@ -55,9 +41,6 @@ func (c Config) WithDefaults() Config {
 	}
 	if c.LayerRules == nil {
 		c.LayerRules = defaults.LayerRules
-	}
-	if c.AllowedSharedScopes == nil {
-		c.AllowedSharedScopes = defaults.AllowedSharedScopes
 	}
 	if c.ForbiddenWeakScopes == nil {
 		c.ForbiddenWeakScopes = defaults.ForbiddenWeakScopes

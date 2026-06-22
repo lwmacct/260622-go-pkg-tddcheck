@@ -40,7 +40,7 @@ type DeviceGroupService struct{}
 func NewDeviceGroupService() *DeviceGroupService { return &DeviceGroupService{} }
 func (s *DeviceGroupService) ListGroups() {}
 `,
-		"internal/service/x_shared.models.go": `package service
+		"internal/service/x_shared.model.go": `package service
 type DeviceRow struct{}
 `,
 		"internal/service/x_shared.mapper.go": `package service
@@ -59,7 +59,7 @@ func NewStore() *Store { return &Store{} }
 		"internal/repository/x_schema.repository.go": `package repository
 func Schema() {}
 `,
-		"internal/repository/x_shared.models.go": `package repository
+		"internal/repository/x_shared.model.go": `package repository
 type DeviceCreate struct{}
 `,
 	})

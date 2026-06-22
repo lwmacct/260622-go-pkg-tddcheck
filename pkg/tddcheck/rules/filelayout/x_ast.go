@@ -57,6 +57,14 @@ func lowerCamelName(value string) string {
 	return strings.ToLower(upper[:1]) + upper[1:]
 }
 
+func lowerCamelIdentifier(value string) bool {
+	if value == "" {
+		return false
+	}
+	first := value[0]
+	return 'a' <= first && first <= 'z'
+}
+
 func snakeName(value string) string {
 	var builder strings.Builder
 	for index, char := range value {
@@ -69,7 +77,11 @@ func snakeName(value string) string {
 }
 
 func violationAt(fileSet *token.FileSet, filename string, pos token.Pos, message string) Violation {
-	return Violation{File: rulekit.DisplayFilename(filename), Line: fileSet.Position(pos).Line, Message: message}
+	return Violation{File: displayFilename(filename), Line: fileSet.Position(pos).Line, Message: message}
+}
+
+func displayFilename(filename string) string {
+	return rulekit.DisplayFilename(filename)
 }
 
 func oneOf(value string, values ...string) bool {

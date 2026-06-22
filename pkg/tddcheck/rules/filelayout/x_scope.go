@@ -12,7 +12,7 @@ import (
 )
 
 func inferredScopeViolations(name fileName, filename string) ([]Violation, error) {
-	if strings.HasPrefix(name.scope, "x_") {
+	if strings.HasPrefix(name.scope, architectureScopePrefix) {
 		return nil, nil
 	}
 	fileSet := token.NewFileSet()
@@ -101,51 +101,11 @@ func camelTokens(value string) []string {
 	return tokens
 }
 
-func escapedKindScope(scope string) (string, bool) {
-	for _, kind := range []string{
-		"commands",
-		"constants",
-		"create",
-		"delete",
-		"dto",
-		"errors",
-		"handler",
-		"list",
-		"mapper",
-		"model",
-		"models",
-		"patch",
-		"repository",
-		"schema",
-		"service",
-		"store",
-		"update",
-		"upsert",
-		"utils",
-		"validation",
-		"writes",
-	} {
+func escapedKindScope(profile layoutProfile, scope string) (string, bool) {
+	for _, kind := range profile.escapedScopeSuffixes {
 		if strings.HasSuffix(scope, "_"+kind) {
 			return kind, true
 		}
 	}
 	return "", false
-}
-
-func reservedArchitectureScope(scope string) bool {
-	return oneOf(
-		scope,
-		"api",
-		"batch",
-		"database",
-		"frontend",
-		"id",
-		"ids",
-		"repository",
-		"router",
-		"schema",
-		"shared",
-		"store",
-		"write",
-	)
 }

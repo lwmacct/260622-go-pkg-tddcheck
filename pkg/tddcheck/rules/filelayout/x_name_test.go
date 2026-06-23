@@ -5,6 +5,25 @@ import (
 	"testing"
 )
 
+func TestUpperCamelNamePreservesCommonInitialisms(t *testing.T) {
+	got := upperCamelName("node_ws_tunnel")
+	if got != "NodeWSTunnel" {
+		t.Fatalf("upperCamelName() = %q, want NodeWSTunnel", got)
+	}
+}
+
+func TestSnakeNamePreservesCommonInitialisms(t *testing.T) {
+	tests := map[string]string{
+		"IdentitySSHKey": "identity_ssh_key",
+		"NodeWSTunnel":   "node_ws_tunnel",
+	}
+	for input, want := range tests {
+		if got := snakeName(input); got != want {
+			t.Fatalf("snakeName(%q) = %q, want %q", input, got, want)
+		}
+	}
+}
+
 func TestViolationsRejectsWeakScopeAndLegacyNames(t *testing.T) {
 	root := fixture(t, map[string]string{
 		"internal/service/default.service.go": `package service

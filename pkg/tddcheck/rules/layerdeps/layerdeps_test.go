@@ -33,6 +33,45 @@ import _ "example.com/app/internal/service"
 	assertLayerViolationContains(t, violations, "repository must not import service")
 }
 
+func TestViolationsAllowsFreeFileImports(t *testing.T) {
+	root := fixture(t, map[string]string{
+		"internal/handler/x_free.go": `package handler
+import _ "example.com/app/internal/repository"
+`,
+		"internal/repository/x_free.go": `package repository
+import _ "example.com/app/internal/service"
+`,
+	})
+
+	violations, err := New(filepath.Join(root, "internal")).Violations()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(violations) != 0 {
+		t.Fatalf("expected no violations, got %#v", violations)
+	}
+}
+
+func TestViolationsStillRejectsForbiddenImportsOutsideFreeFiles(t *testing.T) {
+	root := fixture(t, map[string]string{
+		"internal/handler/x_free.go": `package handler
+import _ "example.com/app/internal/repository"
+`,
+		"internal/handler/device.handler.go": `package handler
+import _ "example.com/app/internal/repository"
+`,
+	})
+
+	violations, err := New(filepath.Join(root, "internal")).Violations()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(violations) != 1 {
+		t.Fatalf("expected 1 violation, got %#v", violations)
+	}
+	assertLayerViolationContains(t, violations, "handler must not import repository")
+}
+
 func TestViolationsAllowsConfiguredTargetExceptions(t *testing.T) {
 	root := fixture(t, map[string]string{
 		"internal/adapter/sshcmd/middleware.go": `package sshcmd

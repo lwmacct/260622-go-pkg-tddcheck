@@ -62,6 +62,9 @@ func (r Rules) Violations() ([]Violation, error) {
 	config := r.config.WithDefaults()
 	var violations []Violation
 	for _, file := range files {
+		if isFreeFile(file) {
+			continue
+		}
 		layer, ok := layerForFile(root, file, config)
 		if !ok {
 			continue
@@ -72,10 +75,14 @@ func (r Rules) Violations() ([]Violation, error) {
 		}
 		violations = append(violations, fileViolations...)
 	}
+	violations = append(violations, serviceSubjectViolations(root, files, config)...)
 	return violations, nil
 }
 
 func violationsInFile(config rulekit.Config, layer string, filename string) ([]Violation, error) {
+	if isFreeFile(filename) {
+		return nil, nil
+	}
 	profile := profileFromConfig(config)
 	mode := config.LayerFileNameModes[layer]
 	if mode == "" {
@@ -217,4 +224,8 @@ func declarationViolations(layer string, name fileName, filename string) ([]Viol
 		}
 	}
 	return nil, nil
+}
+
+func isFreeFile(filename string) bool {
+	return filepath.Base(filename) == "x_free.go"
 }

@@ -74,6 +74,9 @@ func (r Rules) Violations() ([]Violation, error) {
 
 	var violations []Violation
 	for _, file := range files {
+		if isFreeFile(file) {
+			continue
+		}
 		fileViolations, err := violationsInFile(root, modulePath, config, file)
 		if err != nil {
 			return nil, err
@@ -84,6 +87,9 @@ func (r Rules) Violations() ([]Violation, error) {
 }
 
 func violationsInFile(root string, modulePath string, config rulekit.Config, filename string) ([]Violation, error) {
+	if isFreeFile(filename) {
+		return nil, nil
+	}
 	sourceLayer, sourceRel, ok := sourceLayer(root, filename, config)
 	if !ok {
 		return nil, nil
@@ -179,6 +185,10 @@ func sourceExcepted(rule rulekit.LayerDependencyRule, sourceRel string) bool {
 		}
 	}
 	return false
+}
+
+func isFreeFile(filename string) bool {
+	return filepath.Base(filename) == "x_free.go"
 }
 
 func dependencyExcepted(rule rulekit.LayerDependencyRule, targetRel string) bool {

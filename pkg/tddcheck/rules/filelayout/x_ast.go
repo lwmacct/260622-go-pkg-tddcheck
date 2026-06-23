@@ -143,10 +143,37 @@ func upperCamelName(value string) string {
 		if part == "" {
 			continue
 		}
+		if initialism, ok := commonInitialism(part); ok {
+			builder.WriteString(initialism)
+			continue
+		}
 		builder.WriteString(strings.ToUpper(part[:1]))
 		builder.WriteString(part[1:])
 	}
 	return builder.String()
+}
+
+func commonInitialism(value string) (string, bool) {
+	switch strings.ToLower(value) {
+	case "api":
+		return "API", true
+	case "http":
+		return "HTTP", true
+	case "id":
+		return "ID", true
+	case "ip":
+		return "IP", true
+	case "ssh":
+		return "SSH", true
+	case "tls":
+		return "TLS", true
+	case "url":
+		return "URL", true
+	case "ws":
+		return "WS", true
+	default:
+		return "", false
+	}
 }
 
 func lowerCamelName(value string) string {
@@ -167,13 +194,25 @@ func lowerCamelIdentifier(value string) bool {
 
 func snakeName(value string) string {
 	var builder strings.Builder
-	for index, char := range value {
-		if index > 0 && 'A' <= char && char <= 'Z' {
-			builder.WriteByte('_')
+	runes := []rune(value)
+	for index, char := range runes {
+		if index > 0 && upperRune(char) {
+			prev := runes[index-1]
+			var next rune
+			if index+1 < len(runes) {
+				next = runes[index+1]
+			}
+			if !upperRune(prev) || (next != 0 && !upperRune(next)) {
+				builder.WriteByte('_')
+			}
 		}
 		builder.WriteRune(char)
 	}
 	return strings.ToLower(builder.String())
+}
+
+func upperRune(value rune) bool {
+	return 'A' <= value && value <= 'Z'
 }
 
 func violationAt(fileSet *token.FileSet, filename string, pos token.Pos, message string) Violation {

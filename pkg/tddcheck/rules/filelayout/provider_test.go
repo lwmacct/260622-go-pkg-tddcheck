@@ -7,6 +7,10 @@ import (
 
 func TestProviderFilesAllowServicePortImplementations(t *testing.T) {
 	root := fixture(t, map[string]string{
+		"internal/service/image_captcha.service.go": `package service
+type ImageCaptchaService struct{}
+func NewImageCaptchaService() *ImageCaptchaService { return &ImageCaptchaService{} }
+`,
 		"internal/service/image_captcha.provider.go": `package service
 import "context"
 type ImageCaptchaProvider struct{}
@@ -23,6 +27,21 @@ func (p *ImageCaptchaProvider) Create(context.Context) error { return nil }
 	if len(violations) != 0 {
 		t.Fatalf("expected no violations, got %#v", violations)
 	}
+}
+
+func TestProviderFilesRequireOwningServiceSubject(t *testing.T) {
+	root := fixture(t, map[string]string{
+		"internal/service/image_captcha.provider.go": `package service
+type ImageCaptchaProvider struct{}
+func NewImageCaptchaProvider() *ImageCaptchaProvider { return &ImageCaptchaProvider{} }
+`,
+	})
+
+	violations, err := New(filepath.Join(root, "internal")).Violations()
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertViolationContains(t, violations, `service subject "image_captcha" must declare image_captcha.service.go with NewImageCaptchaService`)
 }
 
 func TestProviderFilesRejectTransportAndPersistenceCoupling(t *testing.T) {

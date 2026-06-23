@@ -48,6 +48,10 @@ type BatchDeviceResponse struct{}
 type BatchDeviceItemResult struct{}
 type BatchUpdateDeviceItem struct{}
 `,
+		"internal/service/device.service.go": `package service
+type DeviceService struct{}
+func NewDeviceService() *DeviceService { return &DeviceService{} }
+`,
 		"internal/service/device.support.go": `package service
 func validateDevice() {}
 func normalizeDevice() {}
@@ -108,4 +112,72 @@ func (o *Other) Handler() {}
 		t.Fatal(err)
 	}
 	assertViolationContains(t, violations, "architecture endpoint receiver methods must use Endpoint or private adapter types")
+}
+
+func TestViolationsRejectsServiceSubjectWithoutServiceFile(t *testing.T) {
+	root := fixture(t, map[string]string{
+		"internal/service/node_ws_tunnel.commands.go": `package service
+type ValidateNodeWSTunnelTargetRequest struct{}
+`,
+		"internal/service/node_ws_tunnel.support.go": `package service
+func AsNodeWSTunnelTargetValidation() error { return nil }
+`,
+	})
+
+	violations, err := New(filepath.Join(root, "internal")).Violations()
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertViolationContains(t, violations, `service subject "node_ws_tunnel" must declare node_ws_tunnel.service.go with NewNodeWSTunnelService`)
+}
+
+func TestViolationsAllowsArchitectureServiceScopeWithoutServiceFile(t *testing.T) {
+	root := fixture(t, map[string]string{
+		"internal/service/x_batch.service.go": `package service
+func NewBatchService() {}
+`,
+		"internal/service/x_shared.support.go": `package service
+type SharedConfig struct{}
+`,
+	})
+
+	violations, err := New(filepath.Join(root, "internal")).Violations()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(violations) != 0 {
+		t.Fatalf("expected no violations, got %#v", violations)
+	}
+}
+
+func TestViolationsAllowsFreeFileInAnyLayer(t *testing.T) {
+	root := fixture(t, map[string]string{
+		"internal/handler/x_free.go": `package handler
+import _ "example.com/app/internal/repository"
+type AnythingDTO struct { Name string ` + "`json:\"name\"`" + ` }
+var BadName = 1
+func BuildWhatever() {}
+`,
+		"internal/service/x_free.go": `package service
+import (
+	"net/http"
+	_ "example.com/app/internal/handler"
+)
+type DeviceDTO struct { Name string ` + "`json:\"name\"`" + ` }
+func (d DeviceDTO) Handler(w http.ResponseWriter, r *http.Request) {}
+`,
+		"internal/repository/x_free.go": `package repository
+import _ "example.com/app/internal/service"
+type Free struct{}
+func BuildWhatever() {}
+`,
+	})
+
+	violations, err := New(filepath.Join(root, "internal")).Violations()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(violations) != 0 {
+		t.Fatalf("expected no violations, got %#v", violations)
+	}
 }

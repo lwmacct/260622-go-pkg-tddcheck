@@ -71,24 +71,34 @@ func supportGenDeclViolations(fileSet *token.FileSet, filename string, layer str
 func supportFuncViolations(fileSet *token.FileSet, filename string, layer string, decl *ast.FuncDecl) []Violation {
 	name := decl.Name.Name
 	if decl.Recv != nil {
-		if layer == "repository" {
+		if layer == "handler" || layer == "repository" {
 			return nil
 		}
 		return []Violation{violationAt(fileSet, filename, decl.Pos(), "service support files must not declare receiver methods")}
 	}
-	if supportFunctionName(name) {
+	if supportFunctionName(layer, name) {
 		return nil
 	}
-	return []Violation{violationAt(fileSet, filename, decl.Pos(), "support functions must start with util, validate, normalize, Wrap, Is, or As")}
+	return []Violation{violationAt(fileSet, filename, decl.Pos(), supportFunctionViolationMessage(layer))}
 }
 
-func supportFunctionName(name string) bool {
+func supportFunctionName(layer string, name string) bool {
+	if layer == "handler" && strings.HasPrefix(name, "New") {
+		return true
+	}
 	return strings.HasPrefix(name, "util") ||
 		strings.HasPrefix(name, "validate") ||
 		strings.HasPrefix(name, "normalize") ||
 		strings.HasPrefix(name, "Wrap") ||
 		strings.HasPrefix(name, "Is") ||
 		strings.HasPrefix(name, "As")
+}
+
+func supportFunctionViolationMessage(layer string) string {
+	if layer == "handler" {
+		return "support functions must start with util, validate, normalize, Wrap, Is, As, or New"
+	}
+	return "support functions must start with util, validate, normalize, Wrap, Is, or As"
 }
 
 func forbiddenSupportImport(layer string, importPath string) bool {

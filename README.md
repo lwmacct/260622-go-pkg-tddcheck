@@ -79,7 +79,7 @@ helper.utils.go
 各层允许的文件类型：
 
 ```text
-handler:    dto, handler, mapper, utils
+handler:    dto, handler, mapper, support, utils
 service:    commands, mapper, service, support
 repository: repository, schema, store, support
 ```
@@ -124,7 +124,7 @@ repository:
 *.schema.go     只能声明 schema 生命周期函数
 *.service.go    只能声明一个 Service 结构体、New*Service 和 service 方法
 *.store.go      只能声明 Store 方法
-*.support.go    可声明类型、const、Err* var、util*/validate*/normalize*/Wrap*/Is*/As* 函数
+*.support.go    可声明类型、const、Err* var、util*/validate*/normalize*/Wrap*/Is*/As* 函数；handler support 用于协议支撑对象
 *.utils.go      只能声明包级 util* 函数
 ```
 

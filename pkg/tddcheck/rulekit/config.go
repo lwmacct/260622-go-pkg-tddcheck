@@ -7,15 +7,25 @@ type Config struct {
 	SkipDirs   []string
 	LayerRules []LayerDependencyRule
 
-	ForbiddenWeakScopes []string
+	LayerFileNameModes    map[string]string
+	LayerFileKinds        map[string][]string
+	ArchitectureFileKinds map[string]map[string][]string
+	EscapedScopeSuffixes  []string
+	ForbiddenWeakScopes   []string
 }
 
 type LayerDependencyRule struct {
-	SourceLayer     string
-	TargetLayer     string
-	TargetRelPrefix string
-	Message         string
+	SourceLayer             string
+	TargetLayer             string
+	TargetRelPrefix         string
+	ExceptTargetRelPrefixes []string
+	Message                 string
 }
+
+const (
+	FileNameModeScopeKind   = "scope_kind"
+	FileNameModePackageKind = "package_kind"
+)
 
 func DefaultConfig() Config {
 	return Config{
@@ -26,6 +36,57 @@ func DefaultConfig() Config {
 			{SourceLayer: "service", TargetLayer: "handler", Message: "service must not import handler"},
 			{SourceLayer: "repository", TargetLayer: "handler", Message: "repository must not import handler"},
 			{SourceLayer: "repository", TargetLayer: "service", Message: "repository must not import service"},
+		},
+		LayerFileNameModes: map[string]string{
+			"handler":    FileNameModeScopeKind,
+			"service":    FileNameModeScopeKind,
+			"repository": FileNameModeScopeKind,
+		},
+		LayerFileKinds: map[string][]string{
+			"handler":    {"dto", "handler", "mapper", "utils"},
+			"service":    {"commands", "mapper", "service", "support"},
+			"repository": {"repository", "schema", "store", "support"},
+		},
+		ArchitectureFileKinds: map[string]map[string][]string{
+			"handler": {
+				"x_api":      {"handler", "utils"},
+				"x_frontend": {"handler", "utils"},
+				"x_router":   {"handler", "utils"},
+				"x_shared":   {"handler", "utils"},
+			},
+			"service": {
+				"x_batch":  {"service"},
+				"x_id":     {"support"},
+				"x_shared": {"mapper", "support"},
+			},
+			"repository": {
+				"x_database": {"repository"},
+				"x_schema":   {"repository", "support"},
+				"x_store":    {"repository"},
+				"x_shared":   {"support"},
+			},
+		},
+		EscapedScopeSuffixes: []string{
+			"commands",
+			"constants",
+			"create",
+			"delete",
+			"dto",
+			"errors",
+			"handler",
+			"list",
+			"mapper",
+			"model",
+			"patch",
+			"repository",
+			"schema",
+			"service",
+			"store",
+			"support",
+			"update",
+			"upsert",
+			"utils",
+			"validation",
 		},
 		ForbiddenWeakScopes: []string{"common", "default", "helper", "helpers", "misc", "util", "utils"},
 	}
@@ -41,6 +102,18 @@ func (c Config) WithDefaults() Config {
 	}
 	if c.LayerRules == nil {
 		c.LayerRules = defaults.LayerRules
+	}
+	if c.LayerFileNameModes == nil {
+		c.LayerFileNameModes = defaults.LayerFileNameModes
+	}
+	if c.LayerFileKinds == nil {
+		c.LayerFileKinds = defaults.LayerFileKinds
+	}
+	if c.ArchitectureFileKinds == nil {
+		c.ArchitectureFileKinds = defaults.ArchitectureFileKinds
+	}
+	if c.EscapedScopeSuffixes == nil {
+		c.EscapedScopeSuffixes = defaults.EscapedScopeSuffixes
 	}
 	if c.ForbiddenWeakScopes == nil {
 		c.ForbiddenWeakScopes = defaults.ForbiddenWeakScopes

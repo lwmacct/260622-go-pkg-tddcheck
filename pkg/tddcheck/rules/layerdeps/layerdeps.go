@@ -153,6 +153,9 @@ func invalidDependency(config rulekit.Config, source string, target string, targ
 		if rule.TargetRelPrefix != "" && !strings.HasPrefix(targetRel, rule.TargetRelPrefix) {
 			continue
 		}
+		if dependencyExcepted(rule, targetRel) {
+			continue
+		}
 		message := rule.Message
 		if message == "" {
 			message = source + " must not import " + target
@@ -160,4 +163,13 @@ func invalidDependency(config rulekit.Config, source string, target string, targ
 		return message, true
 	}
 	return "", false
+}
+
+func dependencyExcepted(rule rulekit.LayerDependencyRule, targetRel string) bool {
+	for _, prefix := range rule.ExceptTargetRelPrefixes {
+		if strings.HasPrefix(targetRel, prefix) {
+			return true
+		}
+	}
+	return false
 }

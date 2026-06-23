@@ -76,26 +76,34 @@ func (r Rules) Violations() ([]Violation, error) {
 }
 
 func violationsInFile(config rulekit.Config, layer string, filename string) ([]Violation, error) {
-	profile := hsrStrictProfile()
+	profile := profileFromConfig(config)
+	mode := config.LayerFileNameModes[layer]
+	if mode == "" {
+		mode = rulekit.FileNameModeScopeKind
+	}
 	base := filepath.Base(filename)
-	parsed, ok := parseFileName(base)
+	parsed, ok := parseFileName(base, mode)
 	if !ok {
+		pattern := "{scope}.{type}.go"
+		if mode == rulekit.FileNameModePackageKind {
+			pattern = "{type}.go"
+		}
 		return []Violation{{
 			File:    rulekit.DisplayFilename(filename),
 			Line:    1,
-			Message: fmt.Sprintf("%s file must use {scope}.{type}.go naming", layer),
+			Message: fmt.Sprintf("%s file must use %s naming", layer, pattern),
 		}}, nil
 	}
 
 	var violations []Violation
-	if rulekit.StringIn(parsed.scope, config.ForbiddenWeakScopes) {
+	if mode == rulekit.FileNameModeScopeKind && rulekit.StringIn(parsed.scope, config.ForbiddenWeakScopes) {
 		violations = append(violations, Violation{
 			File:    rulekit.DisplayFilename(filename),
 			Line:    1,
 			Message: fmt.Sprintf("scope %q is too weak; use a resource name or approved shared scope", parsed.scope),
 		})
 	}
-	if !strings.HasPrefix(parsed.scope, architectureScopePrefix) {
+	if mode == rulekit.FileNameModeScopeKind && !strings.HasPrefix(parsed.scope, architectureScopePrefix) {
 		if escapedKind, ok := escapedKindScope(profile, parsed.scope); ok {
 			violations = append(violations, Violation{
 				File:    rulekit.DisplayFilename(filename),
@@ -104,14 +112,14 @@ func violationsInFile(config rulekit.Config, layer string, filename string) ([]V
 			})
 		}
 	}
-	if !strings.HasPrefix(parsed.scope, architectureScopePrefix) && profile.architectureScopeReserved(parsed.scope) {
+	if mode == rulekit.FileNameModeScopeKind && !strings.HasPrefix(parsed.scope, architectureScopePrefix) && profile.architectureScopeReserved(parsed.scope) {
 		violations = append(violations, Violation{
 			File:    rulekit.DisplayFilename(filename),
 			Line:    1,
 			Message: fmt.Sprintf("architecture scope %q must use x_%s prefix", parsed.scope, parsed.scope),
 		})
 	}
-	if strings.HasPrefix(parsed.scope, architectureScopePrefix) && !profile.architectureScopeReserved(strings.TrimPrefix(parsed.scope, architectureScopePrefix)) {
+	if mode == rulekit.FileNameModeScopeKind && strings.HasPrefix(parsed.scope, architectureScopePrefix) && !profile.architectureScopeReserved(strings.TrimPrefix(parsed.scope, architectureScopePrefix)) {
 		violations = append(violations, Violation{
 			File:    rulekit.DisplayFilename(filename),
 			Line:    1,
@@ -125,18 +133,20 @@ func violationsInFile(config rulekit.Config, layer string, filename string) ([]V
 			Message: fmt.Sprintf("%s file type %q is not allowed", layer, parsed.kind),
 		})
 	}
-	if strings.HasPrefix(parsed.scope, architectureScopePrefix) && !profile.architectureKindAllowed(layer, parsed.scope, parsed.kind) {
+	if mode == rulekit.FileNameModeScopeKind && strings.HasPrefix(parsed.scope, architectureScopePrefix) && !profile.architectureKindAllowed(layer, parsed.scope, parsed.kind) {
 		violations = append(violations, Violation{
 			File:    rulekit.DisplayFilename(filename),
 			Line:    1,
 			Message: fmt.Sprintf("architecture scope %q must not use %s.%s.go in %s", parsed.scope, parsed.scope, parsed.kind, layer),
 		})
 	}
-	scopeViolations, err := inferredScopeViolations(parsed, filename)
-	if err != nil {
-		return nil, err
+	if mode == rulekit.FileNameModeScopeKind {
+		scopeViolations, err := inferredScopeViolations(parsed, filename)
+		if err != nil {
+			return nil, err
+		}
+		violations = append(violations, scopeViolations...)
 	}
-	violations = append(violations, scopeViolations...)
 
 	declViolations, err := declarationViolations(layer, parsed, filename)
 	if err != nil {

@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/lwmacct/260622-go-pkg-tddcheck/pkg/tddcheck/rulekit"
 )
 
 func TestViolationsRejectsForbiddenHSRImports(t *testing.T) {
@@ -29,6 +31,36 @@ import _ "example.com/app/internal/service"
 	}
 	assertLayerViolationContains(t, violations, "handler must not import repository")
 	assertLayerViolationContains(t, violations, "repository must not import service")
+}
+
+func TestViolationsAllowsConfiguredTargetExceptions(t *testing.T) {
+	root := fixture(t, map[string]string{
+		"internal/adapter/sshcmd/middleware.go": `package sshcmd
+import _ "example.com/app/internal/adapter/sshauth"
+`,
+		"internal/adapter/httpauth/service.go": `package httpauth
+import _ "example.com/app/internal/adapter/wsworkspace"
+`,
+	})
+
+	violations, err := New(filepath.Join(root, "internal"), rulekit.WithConfig(rulekit.Config{
+		LayerDirs: []string{"adapter"},
+		LayerRules: []rulekit.LayerDependencyRule{
+			{
+				SourceLayer:             "adapter",
+				TargetLayer:             "adapter",
+				ExceptTargetRelPrefixes: []string{"adapter/sshauth"},
+				Message:                 "adapter must not import adapter",
+			},
+		},
+	})).Violations()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(violations) != 1 {
+		t.Fatalf("expected 1 violation, got %#v", violations)
+	}
+	assertLayerViolationContains(t, violations, "adapter must not import adapter")
 }
 
 func fixture(t *testing.T, files map[string]string) string {

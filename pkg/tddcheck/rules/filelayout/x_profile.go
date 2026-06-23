@@ -1,5 +1,7 @@
 package filelayout
 
+import "github.com/lwmacct/260622-go-pkg-tddcheck/pkg/tddcheck/rulekit"
+
 const architectureScopePrefix = "x_"
 
 type layoutProfile struct {
@@ -9,53 +11,15 @@ type layoutProfile struct {
 }
 
 func hsrStrictProfile() layoutProfile {
+	return profileFromConfig(rulekit.DefaultConfig())
+}
+
+func profileFromConfig(config rulekit.Config) layoutProfile {
+	config = config.WithDefaults()
 	return layoutProfile{
-		kindsByLayer: map[string][]string{
-			"handler":    {"dto", "handler", "mapper", "utils"},
-			"service":    {"commands", "mapper", "service", "support"},
-			"repository": {"repository", "schema", "store", "support"},
-		},
-		architectureKindsByLayer: map[string]map[string][]string{
-			"handler": {
-				"x_api":      {"handler", "utils"},
-				"x_frontend": {"handler", "utils"},
-				"x_router":   {"handler", "utils"},
-				"x_shared":   {"handler", "utils"},
-			},
-			"service": {
-				"x_batch":  {"service"},
-				"x_id":     {"support"},
-				"x_shared": {"mapper", "support"},
-			},
-			"repository": {
-				"x_database": {"repository"},
-				"x_schema":   {"repository", "support"},
-				"x_store":    {"repository"},
-				"x_shared":   {"support"},
-			},
-		},
-		escapedScopeSuffixes: []string{
-			"commands",
-			"constants",
-			"create",
-			"delete",
-			"dto",
-			"errors",
-			"handler",
-			"list",
-			"mapper",
-			"model",
-			"patch",
-			"repository",
-			"schema",
-			"service",
-			"store",
-			"support",
-			"update",
-			"upsert",
-			"utils",
-			"validation",
-		},
+		kindsByLayer:             config.LayerFileKinds,
+		architectureKindsByLayer: config.ArchitectureFileKinds,
+		escapedScopeSuffixes:     config.EscapedScopeSuffixes,
 	}
 }
 

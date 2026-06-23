@@ -6,6 +6,11 @@ type Config = rulekit.Config
 
 type LayerDependencyRule = rulekit.LayerDependencyRule
 
+const (
+	FileNameModeScopeKind   = rulekit.FileNameModeScopeKind
+	FileNameModePackageKind = rulekit.FileNameModePackageKind
+)
+
 func DefaultConfig() Config {
 	return rulekit.DefaultConfig()
 }

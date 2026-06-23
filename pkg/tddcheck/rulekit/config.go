@@ -44,7 +44,7 @@ func DefaultConfig() Config {
 		},
 		LayerFileKinds: map[string][]string{
 			"handler":    {"dto", "handler", "mapper", "utils"},
-			"service":    {"commands", "mapper", "service", "support"},
+			"service":    {"commands", "mapper", "provider", "service", "support"},
 			"repository": {"repository", "schema", "store", "support"},
 		},
 		ArchitectureFileKinds: map[string]map[string][]string{
@@ -78,6 +78,7 @@ func DefaultConfig() Config {
 			"mapper",
 			"model",
 			"patch",
+			"provider",
 			"repository",
 			"schema",
 			"service",

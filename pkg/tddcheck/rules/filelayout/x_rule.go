@@ -177,6 +177,10 @@ func declarationViolations(layer string, name fileName, filename string) ([]Viol
 		return mapperViolations(fileSet, filename, parsedFile), nil
 	case "commands":
 		return commandsViolations(fileSet, filename, parsedFile), nil
+	case "provider":
+		if layer == "service" {
+			return providerViolations(fileSet, filename, name, parsedFile), nil
+		}
 	case "utils":
 		return utilsViolations(fileSet, filename, parsedFile), nil
 	case "support":

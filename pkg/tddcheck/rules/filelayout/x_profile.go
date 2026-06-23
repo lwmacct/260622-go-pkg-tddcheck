@@ -11,7 +11,7 @@ type layoutProfile struct {
 func hsrStrictProfile() layoutProfile {
 	return layoutProfile{
 		kindsByLayer: map[string][]string{
-			"handler":    {"dto", "handler", "mapper", "support", "utils"},
+			"handler":    {"dto", "handler", "mapper", "utils"},
 			"service":    {"commands", "mapper", "service", "support"},
 			"repository": {"repository", "schema", "store", "support"},
 		},

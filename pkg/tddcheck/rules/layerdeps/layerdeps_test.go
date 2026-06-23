@@ -63,6 +63,36 @@ import _ "example.com/app/internal/adapter/wsworkspace"
 	assertLayerViolationContains(t, violations, "adapter must not import adapter")
 }
 
+func TestViolationsUsesDependencyLayerDirsWithoutFileLayoutLayers(t *testing.T) {
+	root := fixture(t, map[string]string{
+		"internal/runtime/nodepool/pool.go": `package nodepool
+import _ "example.com/app/internal/adapter/wsworkspace"
+`,
+		"internal/adapter/wsworkspace/endpoint.go": `package wsworkspace
+import _ "example.com/app/internal/runtime/nodepool"
+`,
+	})
+
+	violations, err := New(filepath.Join(root, "internal"), rulekit.WithConfig(rulekit.Config{
+		LayerDirs:           []string{"adapter"},
+		DependencyLayerDirs: []string{"adapter", "runtime"},
+		LayerRules: []rulekit.LayerDependencyRule{
+			{
+				SourceLayer: "runtime",
+				TargetLayer: "adapter",
+				Message:     "runtime must not import adapter",
+			},
+		},
+	})).Violations()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(violations) != 1 {
+		t.Fatalf("expected 1 violation, got %#v", violations)
+	}
+	assertLayerViolationContains(t, violations, "runtime must not import adapter")
+}
+
 func fixture(t *testing.T, files map[string]string) string {
 	t.Helper()
 

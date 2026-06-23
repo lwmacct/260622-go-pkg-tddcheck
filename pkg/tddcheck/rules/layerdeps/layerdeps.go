@@ -122,7 +122,7 @@ func sourceLayer(root string, filename string, config rulekit.Config) (string, b
 		return "", false
 	}
 	for _, part := range strings.Split(filepath.ToSlash(rel), "/") {
-		if slices.Contains(config.LayerDirs, part) {
+		if slices.Contains(config.DependencyLayerDirs, part) {
 			return part, true
 		}
 	}
@@ -135,11 +135,11 @@ func importLayer(modulePath string, importPath string, config rulekit.Config) (s
 		return "", "", false
 	}
 	rel := strings.TrimPrefix(importPath, prefix)
-	if slices.Contains(config.LayerDirs, rel) {
+	if slices.Contains(config.DependencyLayerDirs, rel) {
 		return rel, rel, true
 	}
 	layer, _, ok := strings.Cut(rel, "/")
-	if !ok || !slices.Contains(config.LayerDirs, layer) {
+	if !ok || !slices.Contains(config.DependencyLayerDirs, layer) {
 		return "", "", false
 	}
 	return layer, rel, true

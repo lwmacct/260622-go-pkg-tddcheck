@@ -107,6 +107,48 @@ import _ "example.com/app/internal/repository"
 	}
 }
 
+func TestProjectRulesCheckSupportsDependencyOnlyLayers(t *testing.T) {
+	root := fixture(t, map[string]string{
+		"internal/adapter/wsworkspace/endpoint.go": `package wsworkspace
+import _ "example.com/app/internal/service"
+`,
+		"internal/runtime/nodepool/pool.go": `package nodepool
+import _ "example.com/app/internal/adapter/wsworkspace"
+`,
+	})
+
+	result := ProjectRules{
+		Root: filepath.Join(root, "internal"),
+		Config: Config{
+			LayerDirs:           []string{"adapter"},
+			DependencyLayerDirs: []string{"adapter", "runtime", "service"},
+			LayerFileNameModes: map[string]string{
+				"adapter": FileNameModePackageKind,
+			},
+			LayerFileKinds: map[string][]string{
+				"adapter": {"endpoint"},
+			},
+			ArchitectureFileKinds: map[string]map[string][]string{},
+			LayerRules: []LayerDependencyRule{
+				{SourceLayer: "runtime", TargetLayer: "adapter", Message: "runtime must not import adapter"},
+			},
+		},
+	}.Check()
+	if result.Err != nil {
+		t.Fatal(result.Err)
+	}
+	if result.Passed {
+		t.Fatal("expected failure")
+	}
+	text := result.Text()
+	if !strings.Contains(text, "runtime must not import adapter") {
+		t.Fatalf("expected runtime dependency violation, got:\n%s", text)
+	}
+	if strings.Contains(text, "runtime file must use") {
+		t.Fatalf("runtime should not be checked by filelayout, got:\n%s", text)
+	}
+}
+
 func fixture(t *testing.T, files map[string]string) string {
 	t.Helper()
 

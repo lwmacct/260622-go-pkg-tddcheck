@@ -3,9 +3,10 @@ package rulekit
 import "slices"
 
 type Config struct {
-	LayerDirs  []string
-	SkipDirs   []string
-	LayerRules []LayerDependencyRule
+	LayerDirs           []string
+	DependencyLayerDirs []string
+	SkipDirs            []string
+	LayerRules          []LayerDependencyRule
 
 	LayerFileNameModes    map[string]string
 	LayerFileKinds        map[string][]string
@@ -97,6 +98,9 @@ func (c Config) WithDefaults() Config {
 	defaults := DefaultConfig()
 	if c.LayerDirs == nil {
 		c.LayerDirs = defaults.LayerDirs
+	}
+	if c.DependencyLayerDirs == nil {
+		c.DependencyLayerDirs = c.LayerDirs
 	}
 	if c.SkipDirs == nil {
 		c.SkipDirs = defaults.SkipDirs

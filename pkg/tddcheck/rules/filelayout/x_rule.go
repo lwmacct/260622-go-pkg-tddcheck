@@ -126,7 +126,7 @@ func violationsInFile(config rulekit.Config, layer string, filename string) ([]V
 			Message: fmt.Sprintf("architecture scope %q is not reserved", parsed.scope),
 		})
 	}
-	if !profile.kindAllowed(layer, parsed.kind) {
+	if (mode == rulekit.FileNameModePackageKind || !strings.HasPrefix(parsed.scope, architectureScopePrefix)) && !profile.kindAllowed(layer, parsed.kind) {
 		violations = append(violations, Violation{
 			File:    rulekit.DisplayFilename(filename),
 			Line:    1,
@@ -164,6 +164,10 @@ func declarationViolations(layer string, name fileName, filename string) ([]Viol
 	}
 
 	switch name.kind {
+	case "endpoint":
+		if layer == "handler" && name.scope == "x_api" {
+			return architectureEndpointViolations(fileSet, filename, parsedFile), nil
+		}
 	case "dto":
 		return dtoViolations(fileSet, filename, parsedFile), nil
 	case "handler":
@@ -175,6 +179,10 @@ func declarationViolations(layer string, name fileName, filename string) ([]Viol
 		}
 	case "mapper":
 		return mapperViolations(fileSet, filename, parsedFile), nil
+	case "middleware":
+		if layer == "handler" && name.scope == "x_api" {
+			return architectureMiddlewareViolations(fileSet, filename, parsedFile), nil
+		}
 	case "commands":
 		return commandsViolations(fileSet, filename, parsedFile), nil
 	case "provider":
@@ -184,6 +192,9 @@ func declarationViolations(layer string, name fileName, filename string) ([]Viol
 	case "utils":
 		return utilsViolations(fileSet, filename, parsedFile), nil
 	case "support":
+		if layer == "handler" && name.scope == "x_api" {
+			return architectureSupportViolations(fileSet, filename, parsedFile), nil
+		}
 		return supportViolations(fileSet, filename, layer, parsedFile), nil
 	case "service":
 		if layer == "service" {

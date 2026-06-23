@@ -16,6 +16,26 @@ func ToDeviceDTO() DeviceDTO { return DeviceDTO{} }
 		"internal/handler/x_router.handler.go": `package handler
 func registerRoutes() {}
 `,
+		"internal/handler/x_api.endpoint.go": `package handler
+type Endpoint struct{}
+type Config struct{}
+type ServiceConfig struct{}
+type NodeRoutes interface{}
+func NewEndpoint(cfg Config) *Endpoint { return &Endpoint{} }
+func (e *Endpoint) Handler() {}
+func (e *Endpoint) register() {}
+`,
+		"internal/handler/x_api.middleware.go": `package handler
+type Middleware func()
+func (e *Endpoint) sessionMiddleware() Middleware { return nil }
+func utilMiddleware() {}
+`,
+		"internal/handler/x_api.support.go": `package handler
+type AuthConfig struct{}
+type EndpointRoutes interface{}
+func currentUser() {}
+func IsEnabled() bool { return true }
+`,
 		"internal/handler/device_group.handler.go": `package handler
 type deviceGroupHandler struct{}
 func RegisterDeviceGroups() {}
@@ -72,4 +92,20 @@ type DeviceCreate struct{}
 	if len(violations) != 0 {
 		t.Fatalf("expected no violations, got %#v", violations)
 	}
+}
+
+func TestViolationsRejectsInvalidArchitectureEndpointReceiver(t *testing.T) {
+	root := fixture(t, map[string]string{
+		"internal/handler/x_api.endpoint.go": `package handler
+type Endpoint struct{}
+type Other struct{}
+func (o *Other) Handler() {}
+`,
+	})
+
+	violations, err := New(filepath.Join(root, "internal")).Violations()
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertViolationContains(t, violations, "architecture endpoint receiver methods must use Endpoint or private adapter types")
 }

@@ -49,7 +49,7 @@ func DefaultConfig() Config {
 		},
 		ArchitectureFileKinds: map[string]map[string][]string{
 			"handler": {
-				"x_api":      {"handler", "utils"},
+				"x_api":      {"endpoint", "handler", "middleware", "support", "utils"},
 				"x_frontend": {"handler", "utils"},
 				"x_router":   {"handler", "utils"},
 				"x_shared":   {"handler", "utils"},

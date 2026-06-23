@@ -1,17 +1,18 @@
 package filelayout
 
 import (
+	"fmt"
 	"go/ast"
 	"go/token"
 	"strings"
 )
 
-func supportViolations(fileSet *token.FileSet, filename string, layer string, parsedFile *ast.File) []Violation {
+func supportViolations(fileSet *token.FileSet, filename string, layer string, name fileName, parsedFile *ast.File) []Violation {
 	var violations []Violation
 	for _, decl := range parsedFile.Decls {
 		switch typed := decl.(type) {
 		case *ast.GenDecl:
-			violations = append(violations, supportGenDeclViolations(fileSet, filename, layer, typed)...)
+			violations = append(violations, supportGenDeclViolations(fileSet, filename, layer, name, typed)...)
 		case *ast.FuncDecl:
 			violations = append(violations, supportFuncViolations(fileSet, filename, layer, typed)...)
 		}
@@ -19,7 +20,7 @@ func supportViolations(fileSet *token.FileSet, filename string, layer string, pa
 	return violations
 }
 
-func supportGenDeclViolations(fileSet *token.FileSet, filename string, layer string, decl *ast.GenDecl) []Violation {
+func supportGenDeclViolations(fileSet *token.FileSet, filename string, layer string, name fileName, decl *ast.GenDecl) []Violation {
 	var violations []Violation
 	switch decl.Tok {
 	case token.IMPORT:
@@ -46,6 +47,9 @@ func supportGenDeclViolations(fileSet *token.FileSet, filename string, layer str
 				if hasStructTag(typeSpec, "bun") || hasStructTag(typeSpec, "json") || hasStructTag(typeSpec, "query") || hasStructTag(typeSpec, "path") {
 					violations = append(violations, violationAt(fileSet, filename, typeSpec.Pos(), "service support types must not declare transport or persistence tags"))
 				}
+			}
+			if layer == "repository" && forbiddenRepositorySupportTypeName(name, typeSpec.Name.Name) {
+				violations = append(violations, violationAt(fileSet, filename, typeSpec.Pos(), fmt.Sprintf("repository support type %s must start with %s", typeSpec.Name.Name, upperCamelName(name.scope))))
 			}
 		}
 	case token.CONST:
@@ -89,6 +93,23 @@ func supportFunctionName(name string) bool {
 		strings.HasPrefix(name, "Wrap") ||
 		strings.HasPrefix(name, "Is") ||
 		strings.HasPrefix(name, "As")
+}
+
+func forbiddenRepositorySupportTypeName(name fileName, typeName string) bool {
+	if strings.HasPrefix(name.scope, architectureScopePrefix) || !startsWithUpper(typeName) {
+		return false
+	}
+	return !camelTokenPrefix(typeName, upperCamelName(name.scope))
+}
+
+func camelTokenPrefix(value string, prefix string) bool {
+	if !strings.HasPrefix(value, prefix) {
+		return false
+	}
+	if len(value) == len(prefix) {
+		return true
+	}
+	return upperRune(rune(value[len(prefix)]))
 }
 
 func forbiddenSupportImport(layer string, importPath string) bool {

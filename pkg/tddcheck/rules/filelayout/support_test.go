@@ -57,3 +57,32 @@ func Bad() {}
 	assertViolationContains(t, violations, "support vars must start with Err")
 	assertViolationContains(t, violations, "support functions must start with util, validate, normalize, Wrap, Is, or As")
 }
+
+func TestViolationsChecksRepositorySupportTypeSubject(t *testing.T) {
+	root := fixture(t, map[string]string{
+		"internal/repository/identity_ssh_key.support.go": `package repository
+
+type IdentitySSHKey struct{}
+type IdentitySSHKeyCreate struct{}
+type IdentitySSHKeyRow struct{}
+type IdentitySSHKeyUserRow struct{}
+type IdentityUserRow struct{}
+type IdentitySSHKeychain struct{}
+type localHelper struct{}
+`,
+		"internal/repository/x_shared.support.go": `package repository
+
+type SchemaDef struct{}
+`,
+	})
+
+	violations, err := New(filepath.Join(root, "internal")).Violations()
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertViolationContains(t, violations, "repository support type IdentityUserRow must start with IdentitySSHKey")
+	assertViolationContains(t, violations, "repository support type IdentitySSHKeychain must start with IdentitySSHKey")
+	if len(violations) != 2 {
+		t.Fatalf("expected two repository support type violations, got %#v", violations)
+	}
+}

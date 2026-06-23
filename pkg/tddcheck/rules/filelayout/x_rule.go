@@ -202,7 +202,7 @@ func declarationViolations(layer string, name fileName, filename string) ([]Viol
 		if layer == "handler" && name.scope == "x_api" {
 			return architectureSupportViolations(fileSet, filename, parsedFile), nil
 		}
-		return supportViolations(fileSet, filename, layer, parsedFile), nil
+		return supportViolations(fileSet, filename, layer, name, parsedFile), nil
 	case "service":
 		if layer == "service" {
 			if name.scope == "x_batch" {

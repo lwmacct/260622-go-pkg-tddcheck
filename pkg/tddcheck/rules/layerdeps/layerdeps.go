@@ -84,7 +84,7 @@ func (r Rules) Violations() ([]Violation, error) {
 }
 
 func violationsInFile(root string, modulePath string, config rulekit.Config, filename string) ([]Violation, error) {
-	sourceLayer, ok := sourceLayer(root, filename, config)
+	sourceLayer, sourceRel, ok := sourceLayer(root, filename, config)
 	if !ok {
 		return nil, nil
 	}
@@ -102,7 +102,7 @@ func violationsInFile(root string, modulePath string, config rulekit.Config, fil
 		if !ok {
 			continue
 		}
-		message, invalid := invalidDependency(config, sourceLayer, targetLayer, targetRel)
+		message, invalid := invalidDependency(config, sourceLayer, sourceRel, targetLayer, targetRel)
 		if !invalid {
 			continue
 		}
@@ -116,17 +116,18 @@ func violationsInFile(root string, modulePath string, config rulekit.Config, fil
 	return violations, nil
 }
 
-func sourceLayer(root string, filename string, config rulekit.Config) (string, bool) {
+func sourceLayer(root string, filename string, config rulekit.Config) (string, string, bool) {
 	rel, err := filepath.Rel(root, filename)
 	if err != nil {
-		return "", false
+		return "", "", false
 	}
+	sourceRel := filepath.ToSlash(filepath.Dir(rel))
 	for _, part := range strings.Split(filepath.ToSlash(rel), "/") {
 		if slices.Contains(config.DependencyLayerDirs, part) {
-			return part, true
+			return part, sourceRel, true
 		}
 	}
-	return "", false
+	return "", "", false
 }
 
 func importLayer(modulePath string, importPath string, config rulekit.Config) (string, string, bool) {
@@ -145,12 +146,18 @@ func importLayer(modulePath string, importPath string, config rulekit.Config) (s
 	return layer, rel, true
 }
 
-func invalidDependency(config rulekit.Config, source string, target string, targetRel string) (string, bool) {
+func invalidDependency(config rulekit.Config, source string, sourceRel string, target string, targetRel string) (string, bool) {
 	for _, rule := range config.LayerRules {
 		if source != rule.SourceLayer || target != rule.TargetLayer {
 			continue
 		}
+		if rule.SourceRelPrefix != "" && !strings.HasPrefix(sourceRel, rule.SourceRelPrefix) {
+			continue
+		}
 		if rule.TargetRelPrefix != "" && !strings.HasPrefix(targetRel, rule.TargetRelPrefix) {
+			continue
+		}
+		if sourceExcepted(rule, sourceRel) {
 			continue
 		}
 		if dependencyExcepted(rule, targetRel) {
@@ -163,6 +170,15 @@ func invalidDependency(config rulekit.Config, source string, target string, targ
 		return message, true
 	}
 	return "", false
+}
+
+func sourceExcepted(rule rulekit.LayerDependencyRule, sourceRel string) bool {
+	for _, prefix := range rule.ExceptSourceRelPrefixes {
+		if strings.HasPrefix(sourceRel, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 func dependencyExcepted(rule rulekit.LayerDependencyRule, targetRel string) bool {

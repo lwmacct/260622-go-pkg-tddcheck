@@ -93,6 +93,55 @@ import _ "example.com/app/internal/runtime/nodepool"
 	assertLayerViolationContains(t, violations, "runtime must not import adapter")
 }
 
+func TestViolationsAllowsConfiguredSourceAndTargetExceptions(t *testing.T) {
+	root := fixture(t, map[string]string{
+		"internal/adapter/sshcmd/middleware.go": `package sshcmd
+import _ "example.com/app/internal/adapter/sshauth"
+`,
+		"internal/adapter/sshproxyjump/server.go": `package sshproxyjump
+import _ "example.com/app/internal/adapter/sshauth"
+`,
+		"internal/adapter/httpauth/middleware.go": `package httpauth
+import _ "example.com/app/internal/adapter/sshauth"
+`,
+		"internal/adapter/wsworkspace/endpoint.go": `package wsworkspace
+import _ "example.com/app/internal/adapter/wsnodetunnel"
+`,
+	})
+
+	violations, err := New(filepath.Join(root, "internal"), rulekit.WithConfig(rulekit.Config{
+		LayerDirs: []string{"adapter"},
+		LayerRules: []rulekit.LayerDependencyRule{
+			{
+				SourceLayer: "adapter",
+				TargetLayer: "adapter",
+				ExceptSourceRelPrefixes: []string{
+					"adapter/sshcmd",
+					"adapter/sshproxyjump",
+				},
+				TargetRelPrefix: "adapter/sshauth",
+				Message:         "only ssh command adapters may import sshauth",
+			},
+			{
+				SourceLayer: "adapter",
+				TargetLayer: "adapter",
+				ExceptTargetRelPrefixes: []string{
+					"adapter/sshauth",
+				},
+				Message: "adapter must not import adapter",
+			},
+		},
+	})).Violations()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(violations) != 2 {
+		t.Fatalf("expected 2 violations, got %#v", violations)
+	}
+	assertLayerViolationContains(t, violations, "only ssh command adapters may import sshauth")
+	assertLayerViolationContains(t, violations, "adapter must not import adapter")
+}
+
 func fixture(t *testing.T, files map[string]string) string {
 	t.Helper()
 

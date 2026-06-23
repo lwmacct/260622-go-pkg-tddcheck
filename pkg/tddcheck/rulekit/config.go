@@ -17,6 +17,8 @@ type Config struct {
 
 type LayerDependencyRule struct {
 	SourceLayer             string
+	SourceRelPrefix         string
+	ExceptSourceRelPrefixes []string
 	TargetLayer             string
 	TargetRelPrefix         string
 	ExceptTargetRelPrefixes []string

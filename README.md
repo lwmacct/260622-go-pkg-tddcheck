@@ -89,7 +89,7 @@ repository: repository, schema, store, support
 各层允许的架构 scope：
 
 ```text
-handler:    x_api, x_frontend, x_router, x_shared
+handler:    x_http, x_frontend, x_router, x_shared
 service:    x_batch, x_id, x_shared
 repository: x_database, x_schema, x_store, x_shared
 ```
@@ -98,7 +98,7 @@ repository: x_database, x_schema, x_store, x_shared
 
 ```text
 handler:
-  x_api.handler.go, x_api.utils.go
+  x_http.endpoint.go, x_http.support.go, x_http.utils.go
   x_frontend.handler.go, x_frontend.utils.go
   x_router.handler.go, x_router.utils.go
   x_shared.dto.go, x_shared.handler.go, x_shared.utils.go

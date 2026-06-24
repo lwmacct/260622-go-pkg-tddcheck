@@ -51,7 +51,7 @@ func DefaultConfig() Config {
 			"repository": {"repository", "schema", "store", "support"},
 		},
 		ArchitectureScopes: map[string][]string{
-			"handler":    {"x_api", "x_frontend", "x_router", "x_shared"},
+			"handler":    {"x_http", "x_frontend", "x_router", "x_shared"},
 			"service":    {"x_batch", "x_id", "x_shared"},
 			"repository": {"x_database", "x_schema", "x_store", "x_shared"},
 		},

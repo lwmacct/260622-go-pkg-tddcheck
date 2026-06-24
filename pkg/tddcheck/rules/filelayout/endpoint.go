@@ -8,6 +8,8 @@ import (
 
 func architectureEndpointViolations(fileSet *token.FileSet, filename string, parsedFile *ast.File) []Violation {
 	var violations []Violation
+	hasEndpoint := false
+	hasNewEndpoint := false
 	for _, decl := range parsedFile.Decls {
 		switch typed := decl.(type) {
 		case *ast.GenDecl:
@@ -20,11 +22,24 @@ func architectureEndpointViolations(fileSet *token.FileSet, filename string, par
 			}
 			for _, spec := range typed.Specs {
 				typeSpec, ok := spec.(*ast.TypeSpec)
-				if ok && !architectureEndpointType(typeSpec.Name.Name) {
+				if !ok {
+					continue
+				}
+				if typeSpec.Name.Name == "Endpoint" {
+					if _, ok := typeSpec.Type.(*ast.StructType); ok {
+						hasEndpoint = true
+					} else {
+						violations = append(violations, violationAt(fileSet, filename, typeSpec.Pos(), "Endpoint must be a struct"))
+					}
+				}
+				if !architectureEndpointType(typeSpec.Name.Name) {
 					violations = append(violations, violationAt(fileSet, filename, typeSpec.Pos(), "architecture endpoint types must be Endpoint, Config, Options, Services, Dependencies, or end with Config/Routes/Auth"))
 				}
 			}
 		case *ast.FuncDecl:
+			if typed.Name.Name == "NewEndpoint" && typed.Recv == nil {
+				hasNewEndpoint = true
+			}
 			if typed.Recv != nil {
 				receiver := receiverTypeName(typed.Recv)
 				if receiver != "Endpoint" && !lowerCamelIdentifier(receiver) {
@@ -36,6 +51,12 @@ func architectureEndpointViolations(fileSet *token.FileSet, filename string, par
 				violations = append(violations, violationAt(fileSet, filename, typed.Pos(), "architecture endpoint functions must be New* or private helpers"))
 			}
 		}
+	}
+	if !hasEndpoint {
+		violations = append(violations, Violation{File: displayFilename(filename), Line: 1, Message: "architecture endpoint files must declare Endpoint struct"})
+	}
+	if !hasNewEndpoint {
+		violations = append(violations, Violation{File: displayFilename(filename), Line: 1, Message: "architecture endpoint files must declare NewEndpoint"})
 	}
 	return violations
 }

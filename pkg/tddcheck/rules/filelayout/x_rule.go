@@ -177,7 +177,7 @@ func declarationViolations(layer string, name fileName, filename string) ([]Viol
 
 	switch name.kind {
 	case "endpoint":
-		if layer == "handler" && name.scope == "x_api" {
+		if layer == "handler" && name.scope == "x_http" {
 			return architectureEndpointViolations(fileSet, filename, parsedFile), nil
 		}
 	case "dto":
@@ -192,7 +192,7 @@ func declarationViolations(layer string, name fileName, filename string) ([]Viol
 	case "mapper":
 		return mapperViolations(fileSet, filename, parsedFile), nil
 	case "middleware":
-		if layer == "handler" && name.scope == "x_api" {
+		if layer == "handler" && name.scope == "x_http" {
 			return architectureMiddlewareViolations(fileSet, filename, parsedFile), nil
 		}
 	case "commands":
@@ -204,7 +204,7 @@ func declarationViolations(layer string, name fileName, filename string) ([]Viol
 	case "utils":
 		return utilsViolations(fileSet, filename, parsedFile), nil
 	case "support":
-		if layer == "handler" && name.scope == "x_api" {
+		if layer == "handler" && name.scope == "x_http" {
 			return architectureSupportViolations(fileSet, filename, parsedFile), nil
 		}
 		return supportViolations(fileSet, filename, layer, name, parsedFile), nil

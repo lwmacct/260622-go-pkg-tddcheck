@@ -40,7 +40,7 @@ type Store struct{}
 
 func TestProjectRulesCheckPassesArchitectureEndpointWithResourceHandlers(t *testing.T) {
 	root := fixture(t, map[string]string{
-		"internal/handler/x_api.endpoint.go": `package handler
+		"internal/handler/x_http.endpoint.go": `package handler
 import _ "example.com/app/internal/service"
 type Endpoint struct{}
 type Config struct{}
@@ -51,7 +51,7 @@ func (e *Endpoint) register() {}
 func (a nodeAccess) resolve() {}
 func currentUser() {}
 `,
-		"internal/handler/x_api.support.go": `package handler
+		"internal/handler/x_http.support.go": `package handler
 type ServiceConfig struct{}
 type RuntimeConfig struct{}
 type AuthConfig struct{}

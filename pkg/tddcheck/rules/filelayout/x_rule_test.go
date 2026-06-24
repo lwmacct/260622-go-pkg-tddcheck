@@ -19,7 +19,7 @@ type BodyDTO struct{}
 		"internal/handler/x_router.handler.go": `package handler
 func registerRoutes() {}
 `,
-		"internal/handler/x_api.endpoint.go": `package handler
+		"internal/handler/x_http.endpoint.go": `package handler
 type Endpoint struct{}
 type Config struct{}
 type ServiceConfig struct{}
@@ -28,12 +28,12 @@ func NewEndpoint(cfg Config) *Endpoint { return &Endpoint{} }
 func (e *Endpoint) Handler() {}
 func (e *Endpoint) register() {}
 `,
-		"internal/handler/x_api.middleware.go": `package handler
+		"internal/handler/x_http.middleware.go": `package handler
 type Middleware func()
 func (e *Endpoint) sessionMiddleware() Middleware { return nil }
 func utilMiddleware() {}
 `,
-		"internal/handler/x_api.support.go": `package handler
+		"internal/handler/x_http.support.go": `package handler
 type AuthConfig struct{}
 type EndpointRoutes interface{}
 func currentUser() {}
@@ -103,7 +103,7 @@ type DeviceCreate struct{}
 
 func TestViolationsRejectsInvalidArchitectureEndpointReceiver(t *testing.T) {
 	root := fixture(t, map[string]string{
-		"internal/handler/x_api.endpoint.go": `package handler
+		"internal/handler/x_http.endpoint.go": `package handler
 type Endpoint struct{}
 type Other struct{}
 func (o *Other) Handler() {}
@@ -115,6 +115,22 @@ func (o *Other) Handler() {}
 		t.Fatal(err)
 	}
 	assertViolationContains(t, violations, "architecture endpoint receiver methods must use Endpoint or private adapter types")
+}
+
+func TestViolationsRequiresArchitectureEndpointEntrypoint(t *testing.T) {
+	root := fixture(t, map[string]string{
+		"internal/handler/x_http.endpoint.go": `package handler
+type Config struct{}
+func helper() {}
+`,
+	})
+
+	violations, err := New(filepath.Join(root, "internal")).Violations()
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertViolationContains(t, violations, "architecture endpoint files must declare Endpoint struct")
+	assertViolationContains(t, violations, "architecture endpoint files must declare NewEndpoint")
 }
 
 func TestViolationsRejectsServiceSubjectWithoutServiceFile(t *testing.T) {

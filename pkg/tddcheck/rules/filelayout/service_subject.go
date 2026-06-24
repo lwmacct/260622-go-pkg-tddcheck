@@ -27,7 +27,7 @@ func serviceSubjectViolations(root string, files []string, config rulekit.Config
 			continue
 		}
 		name, ok := parseFileName(filepath.Base(file), rulekit.FileNameModeScopeKind)
-		if !ok || strings.HasPrefix(name.scope, architectureScopePrefix) || name.scope == "x_batch" {
+		if !ok || strings.HasPrefix(name.scope, architectureScopePrefix) {
 			continue
 		}
 		item := subjects[name.scope]

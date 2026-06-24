@@ -53,7 +53,7 @@ x_{scope}.{type}.go
 ```text
 internal/handler/device.handler.go
 internal/handler/device.dto.go
-internal/handler/x_router.handler.go
+internal/handler/x_http.endpoint.go
 
 internal/service/device.service.go
 internal/service/device.commands.go
@@ -61,7 +61,7 @@ internal/service/x_shared.support.go
 
 internal/repository/device.support.go
 internal/repository/device.store.go
-internal/repository/x_database.repository.go
+internal/repository/x_store.repository.go
 ```
 
 拒绝示例：
@@ -89,9 +89,9 @@ repository: repository, schema, store, support
 各层允许的架构 scope：
 
 ```text
-handler:    x_http, x_frontend, x_router, x_shared
-service:    x_batch, x_id, x_shared
-repository: x_database, x_schema, x_store, x_shared
+handler:    x_http, x_shared
+service:    x_shared
+repository: x_store, x_shared
 ```
 
 常见架构文件示例：
@@ -99,18 +99,12 @@ repository: x_database, x_schema, x_store, x_shared
 ```text
 handler:
   x_http.endpoint.go, x_http.support.go, x_http.utils.go
-  x_frontend.handler.go, x_frontend.utils.go
-  x_router.handler.go, x_router.utils.go
   x_shared.dto.go, x_shared.handler.go, x_shared.utils.go
 
 service:
-  x_batch.service.go
-  x_id.support.go
   x_shared.mapper.go, x_shared.support.go
 
 repository:
-  x_database.repository.go
-  x_schema.repository.go, x_schema.support.go
   x_store.repository.go
   x_shared.support.go
 ```

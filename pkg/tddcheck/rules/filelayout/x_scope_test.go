@@ -24,8 +24,9 @@ func TestViolationsRejectsArchitectureScopeWithoutPrefix(t *testing.T) {
 		"internal/service/shared.models.go": `package service
 type SharedModel struct{}
 `,
-		"internal/service/batch.service.go": `package service
-func NewBatchService() {}
+		"internal/handler/http.endpoint.go": `package handler
+type Endpoint struct{}
+func NewEndpoint() *Endpoint { return &Endpoint{} }
 `,
 	})
 
@@ -34,7 +35,7 @@ func NewBatchService() {}
 		t.Fatal(err)
 	}
 	assertViolationContains(t, violations, `architecture scope "shared" must use x_shared prefix`)
-	assertViolationContains(t, violations, `architecture scope "batch" must use x_batch prefix`)
+	assertViolationContains(t, violations, `architecture scope "http" must use x_http prefix`)
 }
 
 func TestViolationsRejectsEscapedTypeInResourceScope(t *testing.T) {

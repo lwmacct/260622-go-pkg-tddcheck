@@ -16,9 +16,6 @@ func ToDeviceDTO() DeviceDTO { return DeviceDTO{} }
 		"internal/handler/x_shared.dto.go": `package handler
 type BodyDTO struct{}
 `,
-		"internal/handler/x_router.handler.go": `package handler
-func registerRoutes() {}
-`,
 		"internal/handler/x_http.endpoint.go": `package handler
 type Endpoint struct{}
 type Config struct{}
@@ -59,9 +56,6 @@ func NewDeviceService() *DeviceService { return &DeviceService{} }
 func validateDevice() {}
 func normalizeDevice() {}
 `,
-		"internal/service/x_batch.service.go": `package service
-func NewBatchService() {}
-`,
 		"internal/service/device_group.service.go": `package service
 type DeviceGroupService struct{}
 func NewDeviceGroupService() *DeviceGroupService { return &DeviceGroupService{} }
@@ -83,9 +77,6 @@ func (s *Store) ListDevices(ctx context.Context) ([]string, error) { return nil,
 		"internal/repository/x_store.repository.go": `package repository
 type Store struct{}
 func NewStore() *Store { return &Store{} }
-`,
-		"internal/repository/x_schema.repository.go": `package repository
-func Schema() {}
 `,
 		"internal/repository/x_shared.support.go": `package repository
 type DeviceCreate struct{}
@@ -150,11 +141,8 @@ func AsNodeWSTunnelTargetValidation() error { return nil }
 	assertViolationContains(t, violations, `service subject "node_ws_tunnel" must declare node_ws_tunnel.service.go with NewNodeWSTunnelService`)
 }
 
-func TestViolationsAllowsArchitectureServiceScopeWithoutServiceFile(t *testing.T) {
+func TestViolationsAllowsSharedServiceScopeWithoutServiceFile(t *testing.T) {
 	root := fixture(t, map[string]string{
-		"internal/service/x_batch.service.go": `package service
-func NewBatchService() {}
-`,
 		"internal/service/x_shared.support.go": `package service
 type SharedConfig struct{}
 `,

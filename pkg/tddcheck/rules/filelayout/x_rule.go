@@ -210,9 +210,6 @@ func declarationViolations(layer string, name fileName, filename string) ([]Viol
 		return supportViolations(fileSet, filename, layer, name, parsedFile), nil
 	case "service":
 		if layer == "service" {
-			if name.scope == "x_batch" {
-				return nil, nil
-			}
 			violations := servicePersistenceViolations(fileSet, filename, parsedFile)
 			violations = append(violations, serviceViolations(fileSet, filename, name, parsedFile)...)
 			return violations, nil

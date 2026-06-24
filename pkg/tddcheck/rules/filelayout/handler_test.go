@@ -27,7 +27,7 @@ func (h deviceGroupHelper) list() {}
 
 func TestViolationsChecksArchitectureHandlerContent(t *testing.T) {
 	root := fixture(t, map[string]string{
-		"internal/handler/x_router.handler.go": `package handler
+		"internal/handler/x_shared.handler.go": `package handler
 type RouterHandler struct{}
 func (h RouterHandler) RegisterRoutes() {}
 func BuildRoutes() {}

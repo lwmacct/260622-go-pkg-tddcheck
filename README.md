@@ -34,10 +34,10 @@ go test -count=1 ./internal/testutil/tddcheck
 
 ## 文件命名
 
-资源文件必须使用：
+业务主题文件必须使用：
 
 ```text
-{resource}.{type}.go
+{subject}.{type}.go
 ```
 
 架构/共享文件必须使用：
@@ -45,6 +45,8 @@ go test -count=1 ./internal/testutil/tddcheck
 ```text
 x_{scope}.{type}.go
 ```
+
+`subject` 表示业务主题，不限定为 HTTP/REST resource。`x_` 文件只额外约束 `{scope}` 必须属于所在层的架构 scope 白名单；`{type}` 仍按所在层的普通文件类型白名单检查。
 
 示例：
 
@@ -79,7 +81,7 @@ helper.utils.go
 各层允许的文件类型：
 
 ```text
-handler:    dto, handler, mapper, utils
+handler:    dto, endpoint, handler, mapper, middleware, support, utils
 service:    commands, mapper, service, support
 repository: repository, schema, store, support
 ```
@@ -92,14 +94,14 @@ service:    x_batch, x_id, x_shared
 repository: x_database, x_schema, x_store, x_shared
 ```
 
-允许的架构文件：
+常见架构文件示例：
 
 ```text
 handler:
   x_api.handler.go, x_api.utils.go
   x_frontend.handler.go, x_frontend.utils.go
   x_router.handler.go, x_router.utils.go
-  x_shared.handler.go, x_shared.utils.go
+  x_shared.dto.go, x_shared.handler.go, x_shared.utils.go
 
 service:
   x_batch.service.go

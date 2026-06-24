@@ -7,8 +7,8 @@ import (
 
 func TestViolationsRejectsArchitectureScopeInWrongLayer(t *testing.T) {
 	root := fixture(t, map[string]string{
-		"internal/service/x_database.service.go": `package service
-func NewDatabaseService() {}
+		"internal/service/x_database.support.go": `package service
+type DatabaseConfig struct{}
 `,
 	})
 
@@ -16,7 +16,7 @@ func NewDatabaseService() {}
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertViolationContains(t, violations, `architecture scope "x_database" must not use x_database.service.go in service`)
+	assertViolationContains(t, violations, `architecture scope "x_database" is not allowed in service`)
 }
 
 func TestViolationsRejectsRemovedFileTypes(t *testing.T) {

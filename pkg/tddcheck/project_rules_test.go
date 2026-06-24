@@ -128,7 +128,7 @@ import _ "example.com/app/internal/adapter/wsworkspace"
 			LayerFileKinds: map[string][]string{
 				"adapter": {"endpoint"},
 			},
-			ArchitectureFileKinds: map[string]map[string][]string{},
+			ArchitectureScopes: map[string][]string{},
 			LayerRules: []LayerDependencyRule{
 				{SourceLayer: "runtime", TargetLayer: "adapter", Message: "runtime must not import adapter"},
 			},

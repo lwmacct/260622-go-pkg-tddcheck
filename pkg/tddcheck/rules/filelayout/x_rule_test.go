@@ -13,6 +13,9 @@ type DeviceDTO struct{}
 		"internal/handler/device.mapper.go": `package handler
 func ToDeviceDTO() DeviceDTO { return DeviceDTO{} }
 `,
+		"internal/handler/x_shared.dto.go": `package handler
+type BodyDTO struct{}
+`,
 		"internal/handler/x_router.handler.go": `package handler
 func registerRoutes() {}
 `,

@@ -16,7 +16,7 @@ func ToDeviceGroupRow() {}
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertViolationContains(t, violations, `scope "devicegroup" must use snake_case resource name "device_group"`)
+	assertViolationContains(t, violations, `scope "devicegroup" must use snake_case subject name "device_group"`)
 }
 
 func TestViolationsRejectsArchitectureScopeWithoutPrefix(t *testing.T) {

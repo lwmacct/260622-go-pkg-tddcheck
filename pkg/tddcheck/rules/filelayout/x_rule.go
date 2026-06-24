@@ -76,6 +76,11 @@ func (r Rules) Violations() ([]Violation, error) {
 		violations = append(violations, fileViolations...)
 	}
 	violations = append(violations, serviceSubjectViolations(root, files, config)...)
+	appcmdViolations, err := appcmdTransportViolations(root, files, config)
+	if err != nil {
+		return nil, err
+	}
+	violations = append(violations, appcmdViolations...)
 	return violations, nil
 }
 
@@ -107,7 +112,7 @@ func violationsInFile(config rulekit.Config, layer string, filename string) ([]V
 		violations = append(violations, Violation{
 			File:    rulekit.DisplayFilename(filename),
 			Line:    1,
-			Message: fmt.Sprintf("scope %q is too weak; use a resource name or approved shared scope", parsed.scope),
+			Message: fmt.Sprintf("scope %q is too weak; use a subject name or approved shared scope", parsed.scope),
 		})
 	}
 	if mode == rulekit.FileNameModeScopeKind && !strings.HasPrefix(parsed.scope, architectureScopePrefix) {
@@ -115,7 +120,7 @@ func violationsInFile(config rulekit.Config, layer string, filename string) ([]V
 			violations = append(violations, Violation{
 				File:    rulekit.DisplayFilename(filename),
 				Line:    1,
-				Message: fmt.Sprintf("scope %q must not encode file type %q; use the resource scope and a single type suffix", parsed.scope, escapedKind),
+				Message: fmt.Sprintf("scope %q must not encode file type %q; use the subject scope and a single type suffix", parsed.scope, escapedKind),
 			})
 		}
 	}
@@ -133,18 +138,18 @@ func violationsInFile(config rulekit.Config, layer string, filename string) ([]V
 			Message: fmt.Sprintf("architecture scope %q is not reserved", parsed.scope),
 		})
 	}
-	if (mode == rulekit.FileNameModePackageKind || !strings.HasPrefix(parsed.scope, architectureScopePrefix)) && !profile.kindAllowed(layer, parsed.kind) {
+	if !profile.kindAllowed(layer, parsed.kind) {
 		violations = append(violations, Violation{
 			File:    rulekit.DisplayFilename(filename),
 			Line:    1,
 			Message: fmt.Sprintf("%s file type %q is not allowed", layer, parsed.kind),
 		})
 	}
-	if mode == rulekit.FileNameModeScopeKind && strings.HasPrefix(parsed.scope, architectureScopePrefix) && !profile.architectureKindAllowed(layer, parsed.scope, parsed.kind) {
+	if mode == rulekit.FileNameModeScopeKind && strings.HasPrefix(parsed.scope, architectureScopePrefix) && !profile.architectureScopeAllowed(layer, parsed.scope) {
 		violations = append(violations, Violation{
 			File:    rulekit.DisplayFilename(filename),
 			Line:    1,
-			Message: fmt.Sprintf("architecture scope %q must not use %s.%s.go in %s", parsed.scope, parsed.scope, parsed.kind, layer),
+			Message: fmt.Sprintf("architecture scope %q is not allowed in %s", parsed.scope, layer),
 		})
 	}
 	if mode == rulekit.FileNameModeScopeKind {

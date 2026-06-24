@@ -8,11 +8,11 @@ type Config struct {
 	SkipDirs            []string
 	LayerRules          []LayerDependencyRule
 
-	LayerFileNameModes    map[string]string
-	LayerFileKinds        map[string][]string
-	ArchitectureFileKinds map[string]map[string][]string
-	EscapedScopeSuffixes  []string
-	ForbiddenWeakScopes   []string
+	LayerFileNameModes   map[string]string
+	LayerFileKinds       map[string][]string
+	ArchitectureScopes   map[string][]string
+	EscapedScopeSuffixes []string
+	ForbiddenWeakScopes  []string
 }
 
 type LayerDependencyRule struct {
@@ -46,28 +46,14 @@ func DefaultConfig() Config {
 			"repository": FileNameModeScopeKind,
 		},
 		LayerFileKinds: map[string][]string{
-			"handler":    {"dto", "handler", "mapper", "utils"},
+			"handler":    {"dto", "endpoint", "handler", "mapper", "middleware", "support", "utils"},
 			"service":    {"commands", "mapper", "provider", "service", "support"},
 			"repository": {"repository", "schema", "store", "support"},
 		},
-		ArchitectureFileKinds: map[string]map[string][]string{
-			"handler": {
-				"x_api":      {"endpoint", "handler", "middleware", "support", "utils"},
-				"x_frontend": {"handler", "utils"},
-				"x_router":   {"handler", "utils"},
-				"x_shared":   {"handler", "utils"},
-			},
-			"service": {
-				"x_batch":  {"service"},
-				"x_id":     {"support"},
-				"x_shared": {"mapper", "support"},
-			},
-			"repository": {
-				"x_database": {"repository"},
-				"x_schema":   {"repository", "support"},
-				"x_store":    {"repository"},
-				"x_shared":   {"support"},
-			},
+		ArchitectureScopes: map[string][]string{
+			"handler":    {"x_api", "x_frontend", "x_router", "x_shared"},
+			"service":    {"x_batch", "x_id", "x_shared"},
+			"repository": {"x_database", "x_schema", "x_store", "x_shared"},
 		},
 		EscapedScopeSuffixes: []string{
 			"commands",
@@ -116,8 +102,8 @@ func (c Config) WithDefaults() Config {
 	if c.LayerFileKinds == nil {
 		c.LayerFileKinds = defaults.LayerFileKinds
 	}
-	if c.ArchitectureFileKinds == nil {
-		c.ArchitectureFileKinds = defaults.ArchitectureFileKinds
+	if c.ArchitectureScopes == nil {
+		c.ArchitectureScopes = defaults.ArchitectureScopes
 	}
 	if c.EscapedScopeSuffixes == nil {
 		c.EscapedScopeSuffixes = defaults.EscapedScopeSuffixes

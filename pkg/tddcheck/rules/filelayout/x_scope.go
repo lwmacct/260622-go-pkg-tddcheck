@@ -25,7 +25,7 @@ func inferredScopeViolations(name fileName, filename string) ([]Violation, error
 			return []Violation{{
 				File:    rulekit.DisplayFilename(filename),
 				Line:    1,
-				Message: fmt.Sprintf("scope %q must use snake_case resource name %q inferred from %s", name.scope, expectedScope, identifier),
+				Message: fmt.Sprintf("scope %q must use snake_case subject name %q inferred from %s", name.scope, expectedScope, identifier),
 			}}, nil
 		}
 	}

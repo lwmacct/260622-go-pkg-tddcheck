@@ -87,6 +87,7 @@ func (s *DeviceService) Get(ctx context.Context) error {
 `,
 		"internal/repository/x_store.repository.go": `package repository
 type Store struct{}
+func NewStore() *Store { return &Store{} }
 `,
 		"internal/repository/device.store.go": `package repository
 import "context"

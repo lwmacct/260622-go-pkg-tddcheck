@@ -26,6 +26,7 @@ func (s *Store) ListDevices(ctx context.Context) ([]string, error) { return nil,
 `,
 		"internal/repository/x_store.repository.go": `package repository
 type Store struct{}
+func NewStore() *Store { return &Store{} }
 `,
 	})
 
@@ -72,6 +73,7 @@ func NewNodeQueryService() *NodeQueryService { return &NodeQueryService{} }
 `,
 		"internal/repository/x_store.repository.go": `package repository
 type Store struct{}
+func NewStore() *Store { return &Store{} }
 `,
 	})
 

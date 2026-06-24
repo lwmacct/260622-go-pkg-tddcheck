@@ -51,6 +51,9 @@ func supportGenDeclViolations(fileSet *token.FileSet, filename string, layer str
 			if layer == "repository" && forbiddenRepositorySupportTypeName(name, typeSpec.Name.Name) {
 				violations = append(violations, violationAt(fileSet, filename, typeSpec.Pos(), fmt.Sprintf("repository support type %s must start with %s", typeSpec.Name.Name, upperCamelName(name.scope))))
 			}
+			if layer == "repository" && forbiddenRepositorySupportModelType(typeSpec) {
+				violations = append(violations, violationAt(fileSet, filename, typeSpec.Pos(), "repository support files must not declare schema models; place Model structs and ORM tags in .schema.go"))
+			}
 		}
 	case token.CONST:
 		return nil

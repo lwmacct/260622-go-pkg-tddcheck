@@ -117,7 +117,7 @@ repository:
 *.handler.go    只能声明 handler 结构体、Register* 函数和 handler 方法
 *.mapper.go     只能声明包级 To* 函数
 *.repository.go 只能用于 repository 架构文件
-*.schema.go     只能声明 schema 生命周期函数
+*.schema.go     只能声明 *Model 结构体、schema 生命周期函数和 Model receiver hook
 *.service.go    只能声明一个 Service 结构体、New*Service 和 service 方法
 *.store.go      只能声明 Store 方法
 *.support.go    可声明类型、const、Err* var、util*/validate*/normalize*/Wrap*/Is*/As* 函数

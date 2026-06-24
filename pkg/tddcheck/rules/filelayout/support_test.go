@@ -43,6 +43,10 @@ import (
 )
 
 type Device struct{}
+type DeviceModel struct{}
+type DeviceTagged struct {
+	ID int64 ` + "`bun:\"id,pk\" gorm:\"primaryKey\"`" + `
+}
 var status = http.StatusOK
 func Bad() {}
 `,
@@ -54,6 +58,7 @@ func Bad() {}
 	}
 	assertViolationContains(t, violations, "support files must not import example.com/app/internal/service")
 	assertViolationContains(t, violations, "support files must not import net/http")
+	assertViolationContains(t, violations, "repository support files must not declare schema models")
 	assertViolationContains(t, violations, "support vars must start with Err")
 	assertViolationContains(t, violations, "support functions must start with util, validate, normalize, Wrap, Is, or As")
 }

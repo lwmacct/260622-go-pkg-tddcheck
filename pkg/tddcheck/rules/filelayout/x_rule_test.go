@@ -36,6 +36,12 @@ type EndpointRoutes interface{}
 func currentUser() {}
 func IsEnabled() bool { return true }
 `,
+		"internal/handler/x_http.context.go": `package handler
+import "context"
+type requestKey struct{}
+func ContextWithRequest(ctx context.Context) context.Context { return ctx }
+func RequestFromContext(ctx context.Context) bool { return true }
+`,
 		"internal/handler/device_group.handler.go": `package handler
 type deviceGroupHandler struct{}
 func RegisterDeviceGroups() {}

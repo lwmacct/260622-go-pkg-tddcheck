@@ -176,6 +176,10 @@ func declarationViolations(layer string, name fileName, filename string) ([]Viol
 	}
 
 	switch name.kind {
+	case "context":
+		if layer == "handler" && name.scope == "x_http" {
+			return architectureContextViolations(fileSet, filename, parsedFile), nil
+		}
 	case "endpoint":
 		if layer == "handler" && name.scope == "x_http" {
 			return architectureEndpointViolations(fileSet, filename, parsedFile), nil

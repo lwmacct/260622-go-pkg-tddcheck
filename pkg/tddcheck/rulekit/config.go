@@ -46,7 +46,7 @@ func DefaultConfig() Config {
 			"repository": FileNameModeScopeKind,
 		},
 		LayerFileKinds: map[string][]string{
-			"handler":    {"dto", "endpoint", "handler", "mapper", "middleware", "support", "utils"},
+			"handler":    {"context", "dto", "endpoint", "handler", "mapper", "middleware", "support", "utils"},
 			"service":    {"commands", "mapper", "provider", "service", "support"},
 			"repository": {"repository", "schema", "store", "support"},
 		},
@@ -58,6 +58,7 @@ func DefaultConfig() Config {
 		EscapedScopeSuffixes: []string{
 			"commands",
 			"constants",
+			"context",
 			"create",
 			"delete",
 			"dto",

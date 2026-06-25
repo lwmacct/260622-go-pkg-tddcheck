@@ -10,10 +10,6 @@ type layoutProfile struct {
 	escapedScopeSuffixes []string
 }
 
-func hsrStrictProfile() layoutProfile {
-	return profileFromConfig(rulekit.DefaultConfig())
-}
-
 func profileFromConfig(config rulekit.Config) layoutProfile {
 	config = config.WithDefaults()
 	return layoutProfile{

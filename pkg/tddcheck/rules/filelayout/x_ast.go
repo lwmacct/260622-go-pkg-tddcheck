@@ -11,18 +11,6 @@ import (
 	"github.com/lwmacct/260622-go-pkg-tddcheck/pkg/tddcheck/rulekit"
 )
 
-func typeOnlyViolations(fileSet *token.FileSet, filename string, parsedFile *ast.File, message string) []Violation {
-	var violations []Violation
-	for _, decl := range parsedFile.Decls {
-		genDecl, ok := decl.(*ast.GenDecl)
-		if ok && (genDecl.Tok == token.IMPORT || genDecl.Tok == token.TYPE) {
-			continue
-		}
-		violations = append(violations, violationAt(fileSet, filename, decl.Pos(), message))
-	}
-	return violations
-}
-
 func receiverTypeName(recv *ast.FieldList) string {
 	if recv == nil || len(recv.List) == 0 {
 		return ""

@@ -3,6 +3,8 @@ package tddcheck
 import (
 	"fmt"
 	"strings"
+
+	"github.com/lwmacct/260622-go-pkg-tddcheck/pkg/markdowntable"
 )
 
 func (m ProjectMap) Markdown() string {
@@ -16,19 +18,20 @@ func (m ProjectMap) Markdown() string {
 	if len(m.Services) == 0 {
 		builder.WriteString("No services found.\n")
 	} else {
-		builder.WriteString("| Service | Scope | File | Constructor | Methods |\n")
-		builder.WriteString("| --- | --- | --- | --- | --- |\n")
+		rows := make([][]string, 0, len(m.Services))
 		for _, service := range m.Services {
-			_, _ = fmt.Fprintf(
-				&builder,
-				"| `%s` | `%s` | `%s` | `%s` | %s |\n",
-				escapeMarkdownTable(service.Name),
-				escapeMarkdownTable(service.Scope),
-				escapeMarkdownTable(service.File),
-				escapeMarkdownTable(service.Constructor),
-				escapeMarkdownTable(serviceMethodNames(service)),
-			)
+			rows = append(rows, []string{
+				codeCell(service.Name),
+				codeCell(service.Scope),
+				codeCell(service.File),
+				codeCell(service.Constructor),
+				serviceMethodNames(service),
+			})
 		}
+		builder.WriteString(markdowntable.Render(markdowntable.Table{
+			Header: []string{"Service", "Scope", "File", "Constructor", "Methods"},
+			Rows:   rows,
+		}))
 	}
 
 	builder.WriteString("\n## Tables\n\n")
@@ -49,18 +52,20 @@ func (m ProjectMap) Markdown() string {
 			}
 
 			if len(table.Fields) > 0 {
-				builder.WriteString("\n| Field | Column | Go Type | Attributes |\n")
-				builder.WriteString("| --- | --- | --- | --- |\n")
+				builder.WriteByte('\n')
+				rows := make([][]string, 0, len(table.Fields))
 				for _, field := range table.Fields {
-					_, _ = fmt.Fprintf(
-						&builder,
-						"| `%s` | `%s` | `%s` | %s |\n",
-						escapeMarkdownTable(field.Name),
-						escapeMarkdownTable(field.Column),
-						escapeMarkdownTable(field.GoType),
-						escapeMarkdownTable(fieldOptions(field)),
-					)
+					rows = append(rows, []string{
+						codeCell(field.Name),
+						codeCell(field.Column),
+						codeCell(field.GoType),
+						fieldOptions(field),
+					})
 				}
+				builder.WriteString(markdowntable.Render(markdowntable.Table{
+					Header: []string{"Field", "Column", "Go Type", "Attributes"},
+					Rows:   rows,
+				}))
 			}
 
 			if len(table.ForeignKeys) > 0 {
@@ -94,9 +99,6 @@ func markdownValue(value string) string {
 	return strings.ReplaceAll(value, "`", "\\`")
 }
 
-func escapeMarkdownTable(value string) string {
-	value = markdownValue(value)
-	value = strings.ReplaceAll(value, "|", "\\|")
-	value = strings.ReplaceAll(value, "\n", " ")
-	return value
+func codeCell(value string) string {
+	return "`" + markdownValue(value) + "`"
 }

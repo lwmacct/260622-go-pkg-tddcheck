@@ -7,6 +7,10 @@ import (
 	"github.com/lwmacct/260622-go-pkg-tddcheck/pkg/markdowntable"
 )
 
+func (a Analysis) Markdown() string {
+	return a.ProjectMap().Markdown()
+}
+
 func (m ProjectMap) Markdown() string {
 	var builder strings.Builder
 	builder.WriteString("# tddcheck Project Map\n\n")

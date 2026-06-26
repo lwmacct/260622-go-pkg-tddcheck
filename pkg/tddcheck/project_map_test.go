@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestProjectRulesMapReportsServicesAndTables(t *testing.T) {
+func TestProjectAnalyzeReportsServicesAndTables(t *testing.T) {
 	root := fixture(t, map[string]string{
 		"internal/service/identity_user.service.go": `package service
 type IdentityUserService struct{}
@@ -51,10 +51,11 @@ func AuthIdentitySchema() {}
 `,
 	})
 
-	projectMap, err := (ProjectRules{Root: filepath.Join(root, "internal")}).Map()
+	analysis, err := (Project{Root: filepath.Join(root, "internal")}).Analyze()
 	if err != nil {
 		t.Fatal(err)
 	}
+	projectMap := analysis.ProjectMap()
 
 	if projectMap.ModulePath != "example.com/app" {
 		t.Fatalf("unexpected module path %q", projectMap.ModulePath)
@@ -146,7 +147,7 @@ func TestProjectMapMarkdownIncludesServicesAndTables(t *testing.T) {
 	}
 }
 
-func TestProjectMapDocWriteWritesDefaultMarkdownFile(t *testing.T) {
+func TestProjectWriteDocWritesDefaultMarkdownFile(t *testing.T) {
 	root := fixture(t, map[string]string{
 		"internal/service/device.service.go": `package service
 type DeviceService struct{}
@@ -173,9 +174,9 @@ func DeviceSchema() {}
 		t.Fatal(err)
 	}
 
-	ProjectMapDoc{Root: "internal"}.Write(t)
+	Project{Root: "internal"}.WriteDoc(t, "")
 
-	data, err := os.ReadFile(filepath.Join(root, DefaultProjectMapDocFile))
+	data, err := os.ReadFile(filepath.Join(root, DefaultDocFile))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -9,23 +9,29 @@
 命令行运行架构检查：
 
 ```bash
-go run ./cmd/tddcheck --root internal
+go run ./cmd/tddcheck check --root internal
 ```
 
 打印版本：
 
 ```bash
-go run ./cmd/tddcheck --version
+go run ./cmd/tddcheck version
 ```
 
 输出项目地图：
 
 ```bash
-go run ./cmd/tddcheck --root internal --map
-go run ./cmd/tddcheck --root internal --map --format json
+go run ./cmd/tddcheck map --root internal
+go run ./cmd/tddcheck map --root internal --format json
 ```
 
-CLI 只接受完整长参数，例如 `--root`、`--map`、`--format`。`--map` 是布尔开关，默认输出 text；需要 JSON 时使用 `--map --format json`。
+生成项目地图文档：
+
+```bash
+go run ./cmd/tddcheck doc --root internal --output docs/tddcheck.gen.md
+```
+
+CLI 使用子命令：`check`、`map`、`doc`、`version`。参数只接受完整长参数，例如 `--root`、`--format`、`--output`。
 
 在项目测试中引用：
 
@@ -39,7 +45,7 @@ import (
 )
 
 func TestRules(t *testing.T) {
-	tddcheck.ProjectRules{Root: "internal"}.Assert(t)
+	tddcheck.Project{Root: "internal"}.Assert(t)
 }
 ```
 
@@ -55,20 +61,17 @@ import (
 )
 
 func TestWriteTDDCheckProjectMap(t *testing.T) {
-	tddcheck.ProjectMapDoc{
-		Root: "internal",
-	}.Write(t)
+	tddcheck.Project{Root: "internal"}.WriteDoc(t, "")
 }
 ```
 
 默认写入 `docs/tddcheck.gen.md`。也可以显式指定输出路径：
 
 ```go
-tddcheck.ProjectMapDoc{
-	Root:       "internal",
-	OutputFile: "docs/tddcheck.gen.md",
-	Config:     tddcheck.DefaultConfig(),
-}.Write(t)
+tddcheck.Project{
+	Root:   "internal",
+	Config: tddcheck.DefaultConfig(),
+}.WriteDoc(t, "docs/tddcheck.gen.md")
 ```
 
 运行本地架构检查时建议使用：
@@ -77,11 +80,11 @@ tddcheck.ProjectMapDoc{
 go test -count=1 ./internal/testutil/tddcheck
 ```
 
-`ProjectRules.Check()` 会返回 `Result`，其中包含 `Passed`、`Err`、`Violations` 和 `Duration`。`Result.Text()` 会输出和 CLI 类似的文本。
+`Project.Analyze()` 会返回 `Analysis`，其中包含 `Root`、`ModulePath`、`Violations`、`Services`、`Tables` 和 `Duration`。`Analysis.Text()` 会输出和 CLI check 类似的文本。
 
-`ProjectRules.Map()` 会返回 `ProjectMap`，提取 service 入口和 repository schema 表结构。`ProjectMap.Text()` 用于 CLI text 输出，`ProjectMap.Markdown()` 用于生成 Markdown 文档，`--map --format json` 会输出同一份结构化数据。
+`Analysis.ProjectMap()` 会返回 `ProjectMap`，提取 service 入口和 repository schema 表结构。`ProjectMap.Text()` 用于 CLI map text 输出，`Analysis.Markdown()` 用于生成 Markdown 文档，`map --format json` 会输出同一份结构化数据。
 
-`ProjectMapDoc.Write(t)` 会执行 `ProjectRules.Map()` 并把 `ProjectMap.Markdown()` 写入本地文件。相对路径按被检查项目的 `go.mod` 根目录解析，默认输出文件是 `docs/tddcheck.gen.md`。
+`Project.WriteDoc(t, outputFile)` 会执行 `Project.Analyze()` 并把 `Analysis.Markdown()` 写入本地文件。相对路径按被检查项目的 `go.mod` 根目录解析，`outputFile` 为空时默认写入 `docs/tddcheck.gen.md`。
 
 当前地图识别：
 
@@ -278,20 +281,20 @@ example.com/app/internal/repository/device
 CLI text 输出适合人工查看：
 
 ```bash
-go run ./cmd/tddcheck --root internal --map
+go run ./cmd/tddcheck map --root internal
 ```
 
 CLI JSON 输出适合被脚本读取：
 
 ```bash
-go run ./cmd/tddcheck --root internal --map --format json
+go run ./cmd/tddcheck map --root internal --format json
 ```
 
 测试生成 Markdown 文档适合把架构地图提交到项目仓库：
 
 ```go
 func TestWriteTDDCheckProjectMap(t *testing.T) {
-	tddcheck.ProjectMapDoc{Root: "internal"}.Write(t)
+	tddcheck.Project{Root: "internal"}.WriteDoc(t, "")
 }
 ```
 
@@ -309,7 +312,7 @@ config := tddcheck.DefaultConfig()
 
 ```go
 func TestRules(t *testing.T) {
-	tddcheck.ProjectRules{
+	tddcheck.Project{
 		Root: "internal",
 		Config: tddcheck.Config{
 			LayerDirs: []string{"adapter"},

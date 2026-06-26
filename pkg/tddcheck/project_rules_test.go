@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestProjectRulesCheckPassesValidHSRLayout(t *testing.T) {
+func TestProjectAnalyzePassesValidHSRLayout(t *testing.T) {
 	root := fixture(t, map[string]string{
 		"internal/handler/device.handler.go": `package handler
 import _ "example.com/app/internal/service"
@@ -30,16 +30,16 @@ func NewStore() *Store { return &Store{} }
 `,
 	})
 
-	result := ProjectRules{Root: filepath.Join(root, "internal")}.Check()
-	if result.Err != nil {
-		t.Fatal(result.Err)
+	analysis, err := Project{Root: filepath.Join(root, "internal")}.Analyze()
+	if err != nil {
+		t.Fatal(err)
 	}
-	if !result.Passed {
-		t.Fatal(result.Text())
+	if !analysis.Passed() {
+		t.Fatal(analysis.Text())
 	}
 }
 
-func TestProjectRulesCheckPassesArchitectureEndpointWithResourceHandlers(t *testing.T) {
+func TestProjectAnalyzePassesArchitectureEndpointWithResourceHandlers(t *testing.T) {
 	root := fixture(t, map[string]string{
 		"internal/handler/x_http.endpoint.go": `package handler
 import _ "example.com/app/internal/service"
@@ -77,30 +77,30 @@ func NewStore() *Store { return &Store{} }
 `,
 	})
 
-	result := ProjectRules{Root: filepath.Join(root, "internal")}.Check()
-	if result.Err != nil {
-		t.Fatal(result.Err)
+	analysis, err := Project{Root: filepath.Join(root, "internal")}.Analyze()
+	if err != nil {
+		t.Fatal(err)
 	}
-	if !result.Passed {
-		t.Fatal(result.Text())
+	if !analysis.Passed() {
+		t.Fatal(analysis.Text())
 	}
 }
 
-func TestProjectRulesCheckReportsViolations(t *testing.T) {
+func TestProjectAnalyzeReportsViolations(t *testing.T) {
 	root := fixture(t, map[string]string{
 		"internal/handler/device.go": `package handler
 import _ "example.com/app/internal/repository"
 `,
 	})
 
-	result := ProjectRules{Root: filepath.Join(root, "internal")}.Check()
-	if result.Err != nil {
-		t.Fatal(result.Err)
+	analysis, err := Project{Root: filepath.Join(root, "internal")}.Analyze()
+	if err != nil {
+		t.Fatal(err)
 	}
-	if result.Passed {
+	if analysis.Passed() {
 		t.Fatal("expected failure")
 	}
-	text := result.Text()
+	text := analysis.Text()
 	if !strings.Contains(text, "[filelayout]") {
 		t.Fatalf("expected filelayout violation, got:\n%s", text)
 	}
@@ -109,7 +109,7 @@ import _ "example.com/app/internal/repository"
 	}
 }
 
-func TestProjectRulesCheckSupportsDependencyOnlyLayers(t *testing.T) {
+func TestProjectAnalyzeSupportsDependencyOnlyLayers(t *testing.T) {
 	root := fixture(t, map[string]string{
 		"internal/adapter/wsworkspace/endpoint.go": `package wsworkspace
 import _ "example.com/app/internal/service"
@@ -119,7 +119,7 @@ import _ "example.com/app/internal/adapter/wsworkspace"
 `,
 	})
 
-	result := ProjectRules{
+	analysis, err := Project{
 		Root: filepath.Join(root, "internal"),
 		Config: Config{
 			LayerDirs:           []string{"adapter"},
@@ -135,14 +135,14 @@ import _ "example.com/app/internal/adapter/wsworkspace"
 				{SourceLayer: "runtime", TargetLayer: "adapter", Message: "runtime must not import adapter"},
 			},
 		},
-	}.Check()
-	if result.Err != nil {
-		t.Fatal(result.Err)
+	}.Analyze()
+	if err != nil {
+		t.Fatal(err)
 	}
-	if result.Passed {
+	if analysis.Passed() {
 		t.Fatal("expected failure")
 	}
-	text := result.Text()
+	text := analysis.Text()
 	if !strings.Contains(text, "runtime must not import adapter") {
 		t.Fatalf("expected runtime dependency violation, got:\n%s", text)
 	}

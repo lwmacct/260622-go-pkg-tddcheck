@@ -23,29 +23,106 @@ func run() int {
 }
 
 func runWithArgs(args []string, stdout io.Writer, stderr io.Writer) int {
-	var root string
-	var showMap bool
-	var format string
-	var showVersion bool
-
-	flags := flag.NewFlagSet("tddcheck", flag.ContinueOnError)
-	flags.SetOutput(stderr)
-	flags.StringVar(&root, "root", "internal", "project root or module subtree to check")
-	flags.BoolVar(&showMap, "map", false, "print project map")
-	flags.StringVar(&format, "format", "text", "project map output format (text or json)")
-	flags.BoolVar(&showVersion, "version", false, "print version")
-	flags.Usage = func() {
-		_, _ = stderr.Write([]byte("Usage: tddcheck [options]\n\nOptions:\n"))
-		_, _ = stderr.Write([]byte("  --root string\n"))
-		_, _ = stderr.Write([]byte("        project root or module subtree to check (default \"internal\")\n"))
-		_, _ = stderr.Write([]byte("  --map\n"))
-		_, _ = stderr.Write([]byte("        print project map instead of running checks\n"))
-		_, _ = stderr.Write([]byte("  --format string\n"))
-		_, _ = stderr.Write([]byte("        project map output format: text or json (default \"text\")\n"))
-		_, _ = stderr.Write([]byte("  --version\n"))
-		_, _ = stderr.Write([]byte("        print version\n"))
+	if len(args) == 0 {
+		return runCheck(nil, stdout, stderr)
 	}
+	switch args[0] {
+	case "check":
+		return runCheck(args[1:], stdout, stderr)
+	case "map":
+		return runMap(args[1:], stdout, stderr)
+	case "doc":
+		return runDoc(args[1:], stdout, stderr)
+	case "version":
+		_, _ = fmt.Fprintln(stdout, version)
+		return 0
+	case "help", "--help":
+		writeUsage(stderr)
+		return 0
+	default:
+		if strings.HasPrefix(args[0], "-") {
+			return runCheck(args, stdout, stderr)
+		}
+		_, _ = fmt.Fprintln(stderr, "tddcheck: unknown command "+args[0])
+		writeUsage(stderr)
+		return 2
+	}
+}
 
+func runCheck(args []string, stdout io.Writer, stderr io.Writer) int {
+	flags := newFlagSet("check", stderr)
+	root := flags.String("root", "internal", "project root or module subtree to check")
+	if code := parseFlags(flags, args, stderr); code != 0 {
+		return code
+	}
+	analysis, err := (tddcheck.Project{Root: *root}).Analyze()
+	if err != nil {
+		_, _ = fmt.Fprintln(stderr, "tddcheck: "+err.Error())
+		return 2
+	}
+	_, _ = fmt.Fprintln(stdout, analysis.Text())
+	if !analysis.Passed() {
+		return 1
+	}
+	return 0
+}
+
+func runMap(args []string, stdout io.Writer, stderr io.Writer) int {
+	flags := newFlagSet("map", stderr)
+	root := flags.String("root", "internal", "project root or module subtree to check")
+	format := flags.String("format", "text", "output format: text or json")
+	if code := parseFlags(flags, args, stderr); code != 0 {
+		return code
+	}
+	analysis, err := (tddcheck.Project{Root: *root}).Analyze()
+	if err != nil {
+		_, _ = fmt.Fprintln(stderr, "tddcheck: "+err.Error())
+		return 2
+	}
+	switch *format {
+	case "text":
+		_, _ = fmt.Fprintln(stdout, analysis.ProjectMap().Text())
+	case "json":
+		encoder := json.NewEncoder(stdout)
+		encoder.SetIndent("", "  ")
+		if err := encoder.Encode(analysis); err != nil {
+			_, _ = fmt.Fprintln(stderr, "tddcheck: "+err.Error())
+			return 2
+		}
+	default:
+		_, _ = fmt.Fprintln(stderr, "tddcheck: unsupported map format "+*format)
+		return 2
+	}
+	return 0
+}
+
+func runDoc(args []string, stdout io.Writer, stderr io.Writer) int {
+	flags := newFlagSet("doc", stderr)
+	root := flags.String("root", "internal", "project root or module subtree to check")
+	output := flags.String("output", tddcheck.DefaultDocFile, "markdown output file")
+	if code := parseFlags(flags, args, stderr); code != 0 {
+		return code
+	}
+	analysis, err := (tddcheck.Project{Root: *root}).Analyze()
+	if err != nil {
+		_, _ = fmt.Fprintln(stderr, "tddcheck: "+err.Error())
+		return 2
+	}
+	if err := analysis.WriteMarkdown(*output); err != nil {
+		_, _ = fmt.Fprintln(stderr, "tddcheck: "+err.Error())
+		return 2
+	}
+	_, _ = fmt.Fprintln(stdout, "tddcheck: wrote "+*output)
+	return 0
+}
+
+func newFlagSet(name string, stderr io.Writer) *flag.FlagSet {
+	flags := flag.NewFlagSet("tddcheck "+name, flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	return flags
+}
+
+func parseFlags(flags *flag.FlagSet, args []string, stderr io.Writer) int {
 	if err := validateLongFlags(args); err != nil {
 		_, _ = fmt.Fprintln(stderr, "tddcheck: "+err.Error())
 		return 2
@@ -59,34 +136,6 @@ func runWithArgs(args []string, stdout io.Writer, stderr io.Writer) int {
 	if flags.NArg() > 0 {
 		_, _ = fmt.Fprintln(stderr, "tddcheck: unexpected argument "+flags.Arg(0))
 		return 2
-	}
-	if showVersion {
-		_, _ = fmt.Fprintln(stdout, version)
-		return 0
-	}
-	formatSet := false
-	flags.Visit(func(flag *flag.Flag) {
-		if flag.Name == "format" {
-			formatSet = true
-		}
-	})
-	if formatSet && !showMap {
-		_, _ = fmt.Fprintln(stderr, "tddcheck: --format requires --map")
-		return 2
-	}
-	if showMap {
-		return runMap(root, format, stdout, stderr)
-	}
-
-	result := (tddcheck.ProjectRules{Root: root}).Check()
-	if result.Err != nil {
-		_, _ = fmt.Fprintln(stderr, "tddcheck: "+result.Err.Error())
-		return 2
-	}
-
-	_, _ = fmt.Fprintln(stdout, result.Text())
-	if !result.Passed {
-		return 1
 	}
 	return 0
 }
@@ -106,25 +155,11 @@ func validateLongFlags(args []string) error {
 	return nil
 }
 
-func runMap(root string, format string, stdout io.Writer, stderr io.Writer) int {
-	projectMap, err := (tddcheck.ProjectRules{Root: root}).Map()
-	if err != nil {
-		_, _ = fmt.Fprintln(stderr, "tddcheck: "+err.Error())
-		return 2
-	}
-	switch format {
-	case "text":
-		_, _ = fmt.Fprintln(stdout, projectMap.Text())
-	case "json":
-		encoder := json.NewEncoder(stdout)
-		encoder.SetIndent("", "  ")
-		if err := encoder.Encode(projectMap); err != nil {
-			_, _ = fmt.Fprintln(stderr, "tddcheck: "+err.Error())
-			return 2
-		}
-	default:
-		_, _ = fmt.Fprintln(stderr, "tddcheck: unsupported map format "+format)
-		return 2
-	}
-	return 0
+func writeUsage(output io.Writer) {
+	_, _ = output.Write([]byte("Usage: tddcheck <command> [options]\n\n"))
+	_, _ = output.Write([]byte("Commands:\n"))
+	_, _ = output.Write([]byte("  check    run architecture checks\n"))
+	_, _ = output.Write([]byte("  map      print project map\n"))
+	_, _ = output.Write([]byte("  doc      write project map markdown documentation\n"))
+	_, _ = output.Write([]byte("  version  print version\n"))
 }

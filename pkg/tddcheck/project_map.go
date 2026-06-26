@@ -51,18 +51,6 @@ type FieldMap struct {
 	Unique        string `json:"unique,omitempty"`
 }
 
-func (r ProjectRules) Map() (ProjectMap, error) {
-	root := r.Root
-	if root == "" {
-		root = "internal"
-	}
-	context, err := rulekit.NewContext(root, "project", r.Config)
-	if err != nil {
-		return ProjectMap{}, err
-	}
-	return mapFromContext(context), nil
-}
-
 func (m ProjectMap) Text() string {
 	var builder strings.Builder
 	_, _ = fmt.Fprintf(&builder, "tddcheck map: %s\n", m.ModulePath)

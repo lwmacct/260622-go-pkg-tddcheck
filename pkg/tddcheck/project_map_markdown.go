@@ -38,6 +38,11 @@ func (m ProjectMap) Markdown() string {
 	if len(m.Tables) == 0 {
 		builder.WriteString("No tables found.\n")
 	} else {
+		builder.WriteString(markdowntable.Render(markdowntable.Table{
+			Header: []string{"Table", "Model", "Scope", "File", "Alias", "Fields", "Foreign Keys"},
+			Rows:   tableSummaryRows(m.Tables),
+		}))
+		builder.WriteString("\n")
 		for _, table := range m.Tables {
 			name := table.Table
 			if name == "" {
@@ -79,6 +84,26 @@ func (m ProjectMap) Markdown() string {
 	}
 
 	return strings.TrimRight(builder.String(), "\n") + "\n"
+}
+
+func tableSummaryRows(tables []TableMap) [][]string {
+	rows := make([][]string, 0, len(tables))
+	for _, table := range tables {
+		name := table.Table
+		if name == "" {
+			name = "(unknown)"
+		}
+		rows = append(rows, []string{
+			codeCell(name),
+			codeCell(table.Model),
+			codeCell(table.Scope),
+			codeCell(table.File),
+			codeCell(table.Alias),
+			fmt.Sprint(len(table.Fields)),
+			fmt.Sprint(len(table.ForeignKeys)),
+		})
+	}
+	return rows
 }
 
 func serviceMethodNames(service ServiceMap) string {

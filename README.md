@@ -6,7 +6,7 @@
 
 ## 使用方式
 
-命令行运行：
+命令行运行架构检查：
 
 ```bash
 go run ./cmd/tddcheck --root internal
@@ -25,6 +25,8 @@ go run ./cmd/tddcheck --root internal --map
 go run ./cmd/tddcheck --root internal --map --format json
 ```
 
+CLI 只接受完整长参数，例如 `--root`、`--map`、`--format`。`--map` 是布尔开关，默认输出 text；需要 JSON 时使用 `--map --format json`。
+
 在项目测试中引用：
 
 ```go
@@ -41,6 +43,34 @@ func TestRules(t *testing.T) {
 }
 ```
 
+生成项目地图文档：
+
+```go
+package tddcheck_test
+
+import (
+	"testing"
+
+	"github.com/lwmacct/260622-go-pkg-tddcheck/pkg/tddcheck"
+)
+
+func TestWriteTDDCheckProjectMap(t *testing.T) {
+	tddcheck.ProjectMapDoc{
+		Root: "internal",
+	}.Write(t)
+}
+```
+
+默认写入 `docs/tddcheck.gen.md`。也可以显式指定输出路径：
+
+```go
+tddcheck.ProjectMapDoc{
+	Root:       "internal",
+	OutputFile: "docs/tddcheck.gen.md",
+	Config:     tddcheck.DefaultConfig(),
+}.Write(t)
+```
+
 运行本地架构检查时建议使用：
 
 ```bash
@@ -49,7 +79,11 @@ go test -count=1 ./internal/testutil/tddcheck
 
 `ProjectRules.Check()` 会返回 `Result`，其中包含 `Passed`、`Err`、`Violations` 和 `Duration`。`Result.Text()` 会输出和 CLI 类似的文本。
 
-`ProjectRules.Map()` 会返回 `ProjectMap`，基于同一次 AST 扫描提取 service 入口和 repository schema 表结构。当前地图识别：
+`ProjectRules.Map()` 会返回 `ProjectMap`，提取 service 入口和 repository schema 表结构。`ProjectMap.Text()` 用于 CLI text 输出，`ProjectMap.Markdown()` 用于生成 Markdown 文档，`--map --format json` 会输出同一份结构化数据。
+
+`ProjectMapDoc.Write(t)` 会执行 `ProjectRules.Map()` 并把 `ProjectMap.Markdown()` 写入本地文件。相对路径按被检查项目的 `go.mod` 根目录解析，默认输出文件是 `docs/tddcheck.gen.md`。
+
+当前地图识别：
 
 ```text
 service      *.service.go 中的 *Service、New*Service 和 receiver 方法
@@ -58,7 +92,7 @@ repository   *.schema.go 中的 *Model、bun table tag、字段 tag 和 ForeignK
 
 ## 执行模型
 
-检查流程会先解析项目根目录、读取 `go.mod` module path，然后扫描一次目标目录下的 Go 文件，缓存文件路径、所属层、AST 和 imports。默认执行两组规则：
+检查流程会先解析项目根目录、读取 `go.mod` module path，然后扫描一次目标目录下的 Go 文件，缓存文件路径、所属层、AST 和 imports。默认架构检查执行两组规则：
 
 ```text
 filelayout  文件命名、文件类型、声明内容、部分跨文件约束
@@ -236,6 +270,32 @@ example.com/app/internal/repository/device
 ```
 
 `x_free.go` 不参与分层依赖检查。
+
+## 项目地图
+
+项目地图是只读分析结果，不参与架构规则是否通过的判定。它复用同一套目录、文件命名和 schema 约束，因此不需要连接数据库，也不需要执行业务代码。
+
+CLI text 输出适合人工查看：
+
+```bash
+go run ./cmd/tddcheck --root internal --map
+```
+
+CLI JSON 输出适合被脚本读取：
+
+```bash
+go run ./cmd/tddcheck --root internal --map --format json
+```
+
+测试生成 Markdown 文档适合把架构地图提交到项目仓库：
+
+```go
+func TestWriteTDDCheckProjectMap(t *testing.T) {
+	tddcheck.ProjectMapDoc{Root: "internal"}.Write(t)
+}
+```
+
+生成文档中的表格由 `pkg/markdowntable` 渲染，会按列宽对齐 Markdown pipe table，便于审阅 diff。
 
 ## 配置
 

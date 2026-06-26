@@ -36,7 +36,7 @@ func (s *Store) listDevicesMissingError(ctx context.Context) []string { return n
 		t.Fatal(err)
 	}
 	assertViolationContains(t, violations, "store files must only declare Store receiver methods")
-	assertViolationContains(t, violations, "store method names must start with List, Fetch, Create, Update, Delete, Upsert, Add, Remove, or Replace")
+	assertViolationContains(t, violations, "store method names must start with List, Fetch, Count, Exists, Create, Update, Delete, Upsert, Add, Remove, or Replace")
 	assertViolationContains(t, violations, "store method names must include a subject after the action")
 	assertViolationContains(t, violations, "store method names must use Action+UpperCamelSubject")
 	assertViolationContains(t, violations, "exported store method subjects must start with Device as an exact resource segment")
@@ -58,6 +58,8 @@ import "context"
 func (s *Store) ListDevices(ctx context.Context) ([]string, error) { return nil, nil }
 func (s *Store) ListDevicesByEnabled(ctx context.Context) ([]string, error) { return nil, nil }
 func (s *Store) FetchDeviceByID(ctx context.Context) (*string, error) { return nil, nil }
+func (s *Store) CountDevices(ctx context.Context) (int, error) { return 0, nil }
+func (s *Store) ExistsDeviceByID(ctx context.Context) (bool, error) { return false, nil }
 func (s *Store) CreateDevice(ctx context.Context) (*string, string, error) { return nil, "", nil }
 func (s *Store) UpdateDevice(ctx context.Context) (*string, error) { return nil, nil }
 func (s *Store) UpsertDevice(ctx context.Context) (*string, string, error) { return nil, "", nil }

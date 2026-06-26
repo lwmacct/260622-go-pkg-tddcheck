@@ -53,7 +53,7 @@ func storeMethodNameViolation(funcDecl *ast.FuncDecl, expectedSubjectPrefix stri
 	}
 	action, subject, ok := splitStoreMethodName(name)
 	if !ok {
-		return "store method names must start with List, Fetch, Create, Update, Delete, Upsert, Add, Remove, or Replace"
+		return "store method names must start with List, Fetch, Count, Exists, Create, Update, Delete, Upsert, Add, Remove, or Replace"
 	}
 	if subject == "" {
 		return "store method names must include a subject after the action"
@@ -78,12 +78,12 @@ func storeMethodSubjectViolation(action string, subject string, expected string)
 		}
 	}
 	plural := pluralSubject(expected)
-	if action == "List" && strings.HasPrefix(subject, plural) {
+	if (action == "List" || action == "Count") && strings.HasPrefix(subject, plural) {
 		rest := strings.TrimPrefix(subject, plural)
 		if rest == "" || explicitListQualifier(rest) {
 			return ""
 		}
-		return "List store method qualifiers after plural subjects must start with By, For, With, or Without"
+		return action + " store method qualifiers after plural subjects must start with By, For, With, or Without"
 	}
 	return "exported store method subjects must start with " + expected + " as an exact resource segment"
 }
@@ -117,7 +117,7 @@ func storeMethodNameExposesQuery(name string) bool {
 }
 
 func splitStoreMethodName(name string) (string, string, bool) {
-	for _, action := range []string{"Replace", "Remove", "Update", "Upsert", "Create", "Delete", "Fetch", "List", "Add"} {
+	for _, action := range []string{"Replace", "Remove", "Update", "Upsert", "Create", "Delete", "Exists", "Fetch", "Count", "List", "Add"} {
 		if strings.HasPrefix(name, action) {
 			return action, strings.TrimPrefix(name, action), true
 		}
@@ -143,6 +143,14 @@ func storeMethodResultViolation(funcDecl *ast.FuncDecl) string {
 	case "Fetch":
 		if len(values) != 1 || !exprIsPointer(values[0]) {
 			return "Fetch store methods must return a pointer and error"
+		}
+	case "Count":
+		if len(values) != 1 || !exprIsIdent(values[0], "int") {
+			return "Count store methods must return int and error"
+		}
+	case "Exists":
+		if len(values) != 1 || !exprIsIdent(values[0], "bool") {
+			return "Exists store methods must return bool and error"
 		}
 	case "Create", "Update", "Upsert":
 		if len(values) != 1 && len(values) != 2 {

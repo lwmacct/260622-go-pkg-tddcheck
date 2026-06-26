@@ -81,6 +81,9 @@ func supportFuncViolations(fileSet *token.FileSet, filename string, layer string
 		if layer == "repository" {
 			return nil
 		}
+		if name == "Error" || name == "Unwrap" {
+			return nil
+		}
 		return []Violation{violationAt(fileSet, filename, decl.Pos(), "service support files must not declare receiver methods")}
 	}
 	if supportFunctionName(name) {

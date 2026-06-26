@@ -13,7 +13,7 @@ import (
 	"github.com/lwmacct/260622-go-pkg-tddcheck/pkg/tddcheck/rules/layerdeps"
 )
 
-const DefaultDocFile = "docs/tddcheck.gen.md"
+const DefaultDocFile = "docs/tddcheck.index.gen.md"
 
 type Project struct {
 	Root   string
@@ -23,9 +23,8 @@ type Project struct {
 type Analysis struct {
 	Root       string        `json:"root"`
 	ModulePath string        `json:"modulePath"`
+	Index      Index         `json:"index"`
 	Violations []Violation   `json:"violations,omitempty"`
-	Services   []ServiceMap  `json:"services"`
-	Tables     []TableMap    `json:"tables"`
 	Duration   time.Duration `json:"duration"`
 
 	projectRoot string
@@ -41,15 +40,14 @@ func (p Project) Analyze() (Analysis, error) {
 	if err != nil {
 		return Analysis{Duration: time.Since(start)}, err
 	}
-	projectMap := mapFromContext(context)
+	index := indexFromContext(context)
 	return Analysis{
-		Root:        projectMap.Root,
-		ModulePath:  projectMap.ModulePath,
+		Root:        index.Root,
+		ModulePath:  index.ModulePath,
+		Index:       index,
 		Violations:  violations,
-		Services:    projectMap.Services,
-		Tables:      projectMap.Tables,
 		Duration:    time.Since(start),
-		projectRoot: projectMap.projectRoot,
+		projectRoot: index.projectRoot,
 	}, nil
 }
 

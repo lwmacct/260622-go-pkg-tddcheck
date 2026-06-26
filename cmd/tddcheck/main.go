@@ -29,8 +29,8 @@ func runWithArgs(args []string, stdout io.Writer, stderr io.Writer) int {
 	switch args[0] {
 	case "check":
 		return runCheck(args[1:], stdout, stderr)
-	case "map":
-		return runMap(args[1:], stdout, stderr)
+	case "index":
+		return runIndex(args[1:], stdout, stderr)
 	case "doc":
 		return runDoc(args[1:], stdout, stderr)
 	case "version":
@@ -67,8 +67,8 @@ func runCheck(args []string, stdout io.Writer, stderr io.Writer) int {
 	return 0
 }
 
-func runMap(args []string, stdout io.Writer, stderr io.Writer) int {
-	flags := newFlagSet("map", stderr)
+func runIndex(args []string, stdout io.Writer, stderr io.Writer) int {
+	flags := newFlagSet("index", stderr)
 	root := flags.String("root", "internal", "project root or module subtree to check")
 	format := flags.String("format", "text", "output format: text or json")
 	if code := parseFlags(flags, args, stderr); code != 0 {
@@ -81,7 +81,7 @@ func runMap(args []string, stdout io.Writer, stderr io.Writer) int {
 	}
 	switch *format {
 	case "text":
-		_, _ = fmt.Fprintln(stdout, analysis.ProjectMap().Text())
+		_, _ = fmt.Fprintln(stdout, analysis.ProjectIndex().Text())
 	case "json":
 		encoder := json.NewEncoder(stdout)
 		encoder.SetIndent("", "  ")
@@ -90,7 +90,7 @@ func runMap(args []string, stdout io.Writer, stderr io.Writer) int {
 			return 2
 		}
 	default:
-		_, _ = fmt.Fprintln(stderr, "tddcheck: unsupported map format "+*format)
+		_, _ = fmt.Fprintln(stderr, "tddcheck: unsupported index format "+*format)
 		return 2
 	}
 	return 0
@@ -159,7 +159,7 @@ func writeUsage(output io.Writer) {
 	_, _ = output.Write([]byte("Usage: tddcheck <command> [options]\n\n"))
 	_, _ = output.Write([]byte("Commands:\n"))
 	_, _ = output.Write([]byte("  check    run architecture checks\n"))
-	_, _ = output.Write([]byte("  map      print project map\n"))
-	_, _ = output.Write([]byte("  doc      write project map markdown documentation\n"))
+	_, _ = output.Write([]byte("  index    print architecture index\n"))
+	_, _ = output.Write([]byte("  doc      write architecture index markdown documentation\n"))
 	_, _ = output.Write([]byte("  version  print version\n"))
 }

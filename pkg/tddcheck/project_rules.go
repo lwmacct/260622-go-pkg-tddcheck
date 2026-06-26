@@ -43,14 +43,18 @@ func (a Analysis) Result() Result {
 	}
 }
 
-func (a Analysis) ProjectMap() ProjectMap {
-	return ProjectMap{
-		Root:        a.Root,
-		ModulePath:  a.ModulePath,
-		Services:    a.Services,
-		Tables:      a.Tables,
-		projectRoot: a.projectRoot,
+func (a Analysis) ProjectIndex() Index {
+	index := a.Index
+	if index.Root == "" {
+		index.Root = a.Root
 	}
+	if index.ModulePath == "" {
+		index.ModulePath = a.ModulePath
+	}
+	if index.projectRoot == "" {
+		index.projectRoot = a.projectRoot
+	}
+	return index
 }
 
 func (a Analysis) Text() string {

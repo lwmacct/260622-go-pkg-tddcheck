@@ -18,20 +18,20 @@ go run ./cmd/tddcheck check --root internal
 go run ./cmd/tddcheck version
 ```
 
-输出项目地图：
+输出架构索引：
 
 ```bash
-go run ./cmd/tddcheck map --root internal
-go run ./cmd/tddcheck map --root internal --format json
+go run ./cmd/tddcheck index --root internal
+go run ./cmd/tddcheck index --root internal --format json
 ```
 
-生成项目地图文档：
+生成架构索引文档：
 
 ```bash
-go run ./cmd/tddcheck doc --root internal --output docs/tddcheck.gen.md
+go run ./cmd/tddcheck doc --root internal --output docs/tddcheck.index.gen.md
 ```
 
-CLI 使用子命令：`check`、`map`、`doc`、`version`。参数只接受完整长参数，例如 `--root`、`--format`、`--output`。
+CLI 使用子命令：`check`、`index`、`doc`、`version`。参数只接受完整长参数，例如 `--root`、`--format`、`--output`。
 
 在项目测试中引用：
 
@@ -49,7 +49,7 @@ func TestRules(t *testing.T) {
 }
 ```
 
-生成项目地图文档：
+生成架构索引文档：
 
 ```go
 package tddcheck_test
@@ -60,18 +60,18 @@ import (
 	"github.com/lwmacct/260622-go-pkg-tddcheck/pkg/tddcheck"
 )
 
-func TestWriteTDDCheckProjectMap(t *testing.T) {
+func TestWriteTDDCheckIndex(t *testing.T) {
 	tddcheck.Project{Root: "internal"}.WriteDoc(t, "")
 }
 ```
 
-默认写入 `docs/tddcheck.gen.md`。也可以显式指定输出路径：
+默认写入 `docs/tddcheck.index.gen.md`。也可以显式指定输出路径：
 
 ```go
 tddcheck.Project{
 	Root:   "internal",
 	Config: tddcheck.DefaultConfig(),
-}.WriteDoc(t, "docs/tddcheck.gen.md")
+}.WriteDoc(t, "docs/tddcheck.index.gen.md")
 ```
 
 运行本地架构检查时建议使用：
@@ -80,16 +80,19 @@ tddcheck.Project{
 go test -count=1 ./internal/testutil/tddcheck
 ```
 
-`Project.Analyze()` 会返回 `Analysis`，其中包含 `Root`、`ModulePath`、`Violations`、`Services`、`Tables` 和 `Duration`。`Analysis.Text()` 会输出和 CLI check 类似的文本。
+`Project.Analyze()` 会返回 `Analysis`，其中包含 `Root`、`ModulePath`、`Index`、`Violations` 和 `Duration`。`Analysis.Text()` 会输出和 CLI check 类似的文本。
 
-`Analysis.ProjectMap()` 会返回 `ProjectMap`，提取 service 入口和 repository schema 表结构。`ProjectMap.Text()` 用于 CLI map text 输出，`Analysis.Markdown()` 用于生成 Markdown 文档，`map --format json` 会输出同一份结构化数据。
+`Analysis.ProjectIndex()` 会返回 `Index`，提取 API route、handler、service、repository store 和 schema 表结构。`Index.Text()` 用于 CLI index text 输出，`Analysis.Markdown()` 用于生成 Markdown 文档，`index --format json` 会输出同一份结构化数据。
 
-`Project.WriteDoc(t, outputFile)` 会执行 `Project.Analyze()` 并把 `Analysis.Markdown()` 写入本地文件。相对路径按被检查项目的 `go.mod` 根目录解析，`outputFile` 为空时默认写入 `docs/tddcheck.gen.md`。
+`Project.WriteDoc(t, outputFile)` 会执行 `Project.Analyze()` 并把 `Analysis.Markdown()` 写入本地文件。相对路径按被检查项目的 `go.mod` 根目录解析，`outputFile` 为空时默认写入 `docs/tddcheck.index.gen.md`。
 
-当前地图识别：
+当前索引识别：
 
 ```text
+api          handler 层 Go 文件中的 Huma Register 调用、Operation、Method、Path、Tags 和 handler 方法
 service      *.service.go 中的 *Service、New*Service 和 receiver 方法
+handler      *.handler.go 中的 *Handler、Register* 和 receiver 方法
+store        *.store.go 中的 Store receiver 方法
 repository   *.schema.go 中的 *Model、bun table tag、字段 tag 和 ForeignKey 字符串
 ```
 
@@ -274,26 +277,26 @@ example.com/app/internal/repository/device
 
 `x_free.go` 不参与分层依赖检查。
 
-## 项目地图
+## 架构索引
 
-项目地图是只读分析结果，不参与架构规则是否通过的判定。它复用同一套目录、文件命名和 schema 约束，因此不需要连接数据库，也不需要执行业务代码。
+架构索引是只读分析结果，不参与架构规则是否通过的判定。它复用同一套目录、文件命名和 schema 约束，因此不需要连接数据库，也不需要执行业务代码。
 
 CLI text 输出适合人工查看：
 
 ```bash
-go run ./cmd/tddcheck map --root internal
+go run ./cmd/tddcheck index --root internal
 ```
 
 CLI JSON 输出适合被脚本读取：
 
 ```bash
-go run ./cmd/tddcheck map --root internal --format json
+go run ./cmd/tddcheck index --root internal --format json
 ```
 
-测试生成 Markdown 文档适合把架构地图提交到项目仓库：
+测试生成 Markdown 文档适合把架构索引提交到项目仓库：
 
 ```go
-func TestWriteTDDCheckProjectMap(t *testing.T) {
+func TestWriteTDDCheckIndex(t *testing.T) {
 	tddcheck.Project{Root: "internal"}.WriteDoc(t, "")
 }
 ```

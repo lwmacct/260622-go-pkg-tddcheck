@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-func TestRunWithArgsMapCommand(t *testing.T) {
+func TestRunWithArgsIndexCommand(t *testing.T) {
 	root := cliFixture(t, map[string]string{
 		"internal/service/device.service.go": `package service
 type DeviceService struct{}
@@ -27,12 +27,12 @@ func DeviceSchema() {}
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	code := runWithArgs([]string{"map", "--root", filepath.Join(root, "internal")}, &stdout, &stderr)
+	code := runWithArgs([]string{"index", "--root", filepath.Join(root, "internal")}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d, stderr:\n%s", code, stderr.String())
 	}
 	for _, needle := range []string{
-		"tddcheck map: example.com/app",
+		"tddcheck index: example.com/app",
 		"- DeviceService (device)",
 		"- devices (DeviceModel, device)",
 	} {
@@ -42,7 +42,7 @@ func DeviceSchema() {}
 	}
 }
 
-func TestRunWithArgsMapCommandJSON(t *testing.T) {
+func TestRunWithArgsIndexCommandJSON(t *testing.T) {
 	root := cliFixture(t, map[string]string{
 		"internal/service/device.service.go": `package service
 type DeviceService struct{}
@@ -52,7 +52,7 @@ func NewDeviceService() *DeviceService { return &DeviceService{} }
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	code := runWithArgs([]string{"map", "--root", filepath.Join(root, "internal"), "--format", "json"}, &stdout, &stderr)
+	code := runWithArgs([]string{"index", "--root", filepath.Join(root, "internal"), "--format", "json"}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d, stderr:\n%s", code, stderr.String())
 	}
@@ -68,7 +68,7 @@ type DeviceService struct{}
 func NewDeviceService() *DeviceService { return &DeviceService{} }
 `,
 	})
-	output := filepath.Join(root, "docs", "map.md")
+	output := filepath.Join(root, "docs", "index.md")
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
@@ -80,7 +80,7 @@ func NewDeviceService() *DeviceService { return &DeviceService{} }
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(data), "# tddcheck Project Map") {
+	if !strings.Contains(string(data), "# tddcheck Architecture Index") {
 		t.Fatalf("expected generated doc, got:\n%s", string(data))
 	}
 }
@@ -88,7 +88,7 @@ func NewDeviceService() *DeviceService { return &DeviceService{} }
 func TestRunWithArgsRejectsShortFlags(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	code := runWithArgs([]string{"map", "-root", "internal"}, &stdout, &stderr)
+	code := runWithArgs([]string{"index", "-root", "internal"}, &stdout, &stderr)
 	if code != 2 {
 		t.Fatalf("expected exit 2, got %d", code)
 	}
@@ -116,7 +116,7 @@ func TestRunWithArgsPrintsUsage(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d", code)
 	}
-	for _, needle := range []string{"check", "map", "doc", "version"} {
+	for _, needle := range []string{"check", "index", "doc", "version"} {
 		if !strings.Contains(stderr.String(), needle) {
 			t.Fatalf("expected usage to contain %q, got:\n%s", needle, stderr.String())
 		}

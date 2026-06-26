@@ -76,7 +76,3 @@ func (r Result) Text() string {
 	}
 	return Analysis{Violations: r.Violations}.Text()
 }
-
-func resultError(err error, violations []Violation, start time.Time) Result {
-	return Result{Passed: false, Err: err, Violations: violations, Duration: time.Since(start)}
-}

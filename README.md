@@ -9,13 +9,20 @@
 命令行运行：
 
 ```bash
-go run ./cmd/tddcheck -root internal
+go run ./cmd/tddcheck --root internal
 ```
 
 打印版本：
 
 ```bash
-go run ./cmd/tddcheck -version
+go run ./cmd/tddcheck --version
+```
+
+输出项目地图：
+
+```bash
+go run ./cmd/tddcheck --root internal --map
+go run ./cmd/tddcheck --root internal --map --format json
 ```
 
 在项目测试中引用：
@@ -41,6 +48,13 @@ go test -count=1 ./internal/testutil/tddcheck
 ```
 
 `ProjectRules.Check()` 会返回 `Result`，其中包含 `Passed`、`Err`、`Violations` 和 `Duration`。`Result.Text()` 会输出和 CLI 类似的文本。
+
+`ProjectRules.Map()` 会返回 `ProjectMap`，基于同一次 AST 扫描提取 service 入口和 repository schema 表结构。当前地图识别：
+
+```text
+service      *.service.go 中的 *Service、New*Service 和 receiver 方法
+repository   *.schema.go 中的 *Model、bun table tag、字段 tag 和 ForeignKey 字符串
+```
 
 ## 执行模型
 

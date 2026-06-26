@@ -2,10 +2,6 @@ package layerdeps
 
 import (
 	"fmt"
-	"go/parser"
-	"go/token"
-	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 
@@ -29,6 +25,24 @@ type Violation struct {
 func New(root string, options ...rulekit.Option) Rules {
 	values := rulekit.NewRuleOptions(root, options...)
 	return Rules{root: values.Root, config: values.Config}
+}
+
+func (r Rules) ID() string {
+	return RuleID
+}
+
+func (r Rules) Check(context *rulekit.Context) ([]rulekit.Diagnostic, error) {
+	values := violationsInContext(context)
+	diagnostics := make([]rulekit.Diagnostic, 0, len(values))
+	for _, value := range values {
+		diagnostics = append(diagnostics, rulekit.Diagnostic{
+			Rule:    RuleID,
+			File:    value.File,
+			Line:    value.Line,
+			Message: value.Message + ": " + value.ImportPath,
+		})
+	}
+	return diagnostics, nil
 }
 
 func (r Rules) Assert(t *testing.T) {
@@ -56,104 +70,81 @@ func (r Rules) Assert(t *testing.T) {
 }
 
 func (r Rules) Violations() ([]Violation, error) {
-	root, err := rulekit.ResolveRuleRoot(r.root, RuleID)
+	context, err := rulekit.NewContext(r.root, RuleID, r.config)
 	if err != nil {
 		return nil, err
 	}
-	modulePath, err := rulekit.ModulePathForRoot(root)
-	if err != nil {
-		return nil, err
-	}
-	config := r.config.WithDefaults()
-	files, err := rulekit.ModuleFiles(root, RuleID, config, func(name string) bool {
-		return strings.HasSuffix(name, ".go") && !strings.HasSuffix(name, "_test.go")
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	var violations []Violation
-	for _, file := range files {
-		if isFreeFile(file) {
-			continue
-		}
-		fileViolations, err := violationsInFile(root, modulePath, config, file)
-		if err != nil {
-			return nil, err
-		}
-		violations = append(violations, fileViolations...)
-	}
-	return violations, nil
+	return violationsInContext(context), nil
 }
 
-func violationsInFile(root string, modulePath string, config rulekit.Config, filename string) ([]Violation, error) {
-	if isFreeFile(filename) {
-		return nil, nil
+func violationsInContext(context *rulekit.Context) []Violation {
+	var violations []Violation
+	for _, file := range context.Files {
+		if rulekit.FreeFile(file.Base) {
+			continue
+		}
+		violations = append(violations, violationsInFile(context, file)...)
 	}
-	sourceLayer, sourceRel, ok := sourceLayer(root, filename, config)
-	if !ok {
-		return nil, nil
-	}
+	return violations
+}
 
-	fileSet := token.NewFileSet()
-	parsedFile, err := parser.ParseFile(fileSet, filename, nil, parser.ImportsOnly|parser.SkipObjectResolution)
-	if err != nil {
-		return nil, err
+func violationsInFile(context *rulekit.Context, file rulekit.GoFile) []Violation {
+	if rulekit.FreeFile(file.Base) {
+		return nil
+	}
+	profile := context.Profile
+	sourceLayer, sourceRel, ok := sourceLayer(file, profile)
+	if !ok {
+		return nil
 	}
 
 	var violations []Violation
-	for _, importSpec := range parsedFile.Imports {
-		importPath := strings.Trim(importSpec.Path.Value, `"`)
-		targetLayer, targetRel, ok := importLayer(modulePath, importPath, config)
+	for _, imported := range file.Imports {
+		targetLayer, targetRel, ok := importLayer(context.ModulePath, imported.Path, profile)
 		if !ok {
 			continue
 		}
-		message, invalid := invalidDependency(config, sourceLayer, sourceRel, targetLayer, targetRel)
+		message, invalid := invalidDependency(profile, sourceLayer, sourceRel, targetLayer, targetRel)
 		if !invalid {
 			continue
 		}
 		violations = append(violations, Violation{
-			File:       rulekit.DisplayFilename(filename),
-			Line:       fileSet.Position(importSpec.Pos()).Line,
-			ImportPath: importPath,
+			File:       rulekit.DisplayFilename(file.AbsPath),
+			Line:       imported.Line,
+			ImportPath: imported.Path,
 			Message:    message,
 		})
 	}
-	return violations, nil
+	return violations
 }
 
-func sourceLayer(root string, filename string, config rulekit.Config) (string, string, bool) {
-	rel, err := filepath.Rel(root, filename)
-	if err != nil {
-		return "", "", false
-	}
-	sourceRel := filepath.ToSlash(filepath.Dir(rel))
-	for _, part := range strings.Split(filepath.ToSlash(rel), "/") {
-		if slices.Contains(config.DependencyLayerDirs, part) {
-			return part, sourceRel, true
+func sourceLayer(file rulekit.GoFile, profile rulekit.Profile) (string, string, bool) {
+	for _, part := range strings.Split(file.RelPath, "/") {
+		if profile.DependencyLayer(part) {
+			return part, file.Dir, true
 		}
 	}
 	return "", "", false
 }
 
-func importLayer(modulePath string, importPath string, config rulekit.Config) (string, string, bool) {
+func importLayer(modulePath string, importPath string, profile rulekit.Profile) (string, string, bool) {
 	prefix := modulePath + "/internal/"
 	if !strings.HasPrefix(importPath, prefix) {
 		return "", "", false
 	}
 	rel := strings.TrimPrefix(importPath, prefix)
-	if slices.Contains(config.DependencyLayerDirs, rel) {
+	if profile.DependencyLayer(rel) {
 		return rel, rel, true
 	}
 	layer, _, ok := strings.Cut(rel, "/")
-	if !ok || !slices.Contains(config.DependencyLayerDirs, layer) {
+	if !ok || !profile.DependencyLayer(layer) {
 		return "", "", false
 	}
 	return layer, rel, true
 }
 
-func invalidDependency(config rulekit.Config, source string, sourceRel string, target string, targetRel string) (string, bool) {
-	for _, rule := range config.LayerRules {
+func invalidDependency(profile rulekit.Profile, source string, sourceRel string, target string, targetRel string) (string, bool) {
+	for _, rule := range profile.LayerRules {
 		if source != rule.SourceLayer || target != rule.TargetLayer {
 			continue
 		}
@@ -185,10 +176,6 @@ func sourceExcepted(rule rulekit.LayerDependencyRule, sourceRel string) bool {
 		}
 	}
 	return false
-}
-
-func isFreeFile(filename string) bool {
-	return filepath.Base(filename) == "x_free.go"
 }
 
 func dependencyExcepted(rule rulekit.LayerDependencyRule, targetRel string) bool {

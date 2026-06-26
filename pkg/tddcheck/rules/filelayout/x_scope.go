@@ -3,33 +3,26 @@ package filelayout
 import (
 	"fmt"
 	"go/ast"
-	"go/parser"
-	"go/token"
 	"strings"
 	"unicode"
 
 	"github.com/lwmacct/260622-go-pkg-tddcheck/pkg/tddcheck/rulekit"
 )
 
-func inferredScopeViolations(name fileName, filename string) ([]Violation, error) {
+func inferredScopeViolations(name fileName, file rulekit.GoFile) []Violation {
 	if strings.HasPrefix(name.scope, architectureScopePrefix) {
-		return nil, nil
+		return nil
 	}
-	fileSet := token.NewFileSet()
-	parsedFile, err := parser.ParseFile(fileSet, filename, nil, parser.SkipObjectResolution)
-	if err != nil {
-		return nil, err
-	}
-	for _, identifier := range fileIdentifiers(parsedFile) {
+	for _, identifier := range fileIdentifiers(file.AST) {
 		if expectedScope, ok := inferredSnakeScope(name.scope, identifier); ok && expectedScope != name.scope {
 			return []Violation{{
-				File:    rulekit.DisplayFilename(filename),
+				File:    rulekit.DisplayFilename(file.AbsPath),
 				Line:    1,
 				Message: fmt.Sprintf("scope %q must use snake_case subject name %q inferred from %s", name.scope, expectedScope, identifier),
-			}}, nil
+			}}
 		}
 	}
-	return nil, nil
+	return nil
 }
 
 func fileIdentifiers(parsedFile *ast.File) []string {
@@ -101,8 +94,8 @@ func camelTokens(value string) []string {
 	return tokens
 }
 
-func escapedKindScope(profile layoutProfile, scope string) (string, bool) {
-	for _, kind := range profile.escapedScopeSuffixes {
+func escapedKindScope(escapedScopeSuffixes []string, scope string) (string, bool) {
+	for _, kind := range escapedScopeSuffixes {
 		if strings.HasSuffix(scope, "_"+kind) {
 			return kind, true
 		}

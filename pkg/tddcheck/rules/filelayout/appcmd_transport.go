@@ -2,42 +2,30 @@ package filelayout
 
 import (
 	"go/ast"
-	"go/parser"
 	"go/token"
-	"path/filepath"
-	"slices"
 	"strings"
 
 	"github.com/lwmacct/260622-go-pkg-tddcheck/pkg/tddcheck/rulekit"
 )
 
-func appcmdTransportViolations(root string, files []string, config rulekit.Config) ([]Violation, error) {
-	if !slices.Contains(config.DependencyLayerDirs, "appcmd") {
-		return nil, nil
+func appcmdTransportViolations(context *rulekit.Context) []Violation {
+	if !context.Profile.DependencyLayer("appcmd") {
+		return nil
 	}
 	var violations []Violation
-	for _, file := range files {
-		if !isAppcmdFile(root, file) {
+	for _, file := range context.Files {
+		if !isAppcmdFile(file) {
 			continue
 		}
-		fileViolations, err := appcmdTransportViolationsInFile(file)
-		if err != nil {
-			return nil, err
-		}
-		violations = append(violations, fileViolations...)
+		violations = append(violations, appcmdTransportViolationsInFile(file)...)
 	}
-	return violations, nil
+	return violations
 }
 
-func appcmdTransportViolationsInFile(filename string) ([]Violation, error) {
-	fileSet := token.NewFileSet()
-	parsedFile, err := parser.ParseFile(fileSet, filename, nil, parser.SkipObjectResolution)
-	if err != nil {
-		return nil, err
-	}
+func appcmdTransportViolationsInFile(file rulekit.GoFile) []Violation {
 	var violations []Violation
 	humaNames := map[string]bool{}
-	for _, decl := range parsedFile.Decls {
+	for _, decl := range file.AST.Decls {
 		genDecl, ok := decl.(*ast.GenDecl)
 		if !ok || genDecl.Tok != token.IMPORT {
 			continue
@@ -50,11 +38,11 @@ func appcmdTransportViolationsInFile(filename string) ([]Violation, error) {
 			if importPath(importSpec) != "github.com/danielgtaylor/huma/v2" {
 				continue
 			}
-			violations = append(violations, violationAt(fileSet, filename, importSpec.Pos(), "appcmd must not import huma; register transport routes in handler"))
+			violations = append(violations, violationAt(file.Fset, file.AbsPath, importSpec.Pos(), "appcmd must not import huma; register transport routes in handler"))
 			humaNames[importAlias(importSpec, "huma")] = true
 		}
 	}
-	for _, decl := range parsedFile.Decls {
+	for _, decl := range file.AST.Decls {
 		genDecl, ok := decl.(*ast.GenDecl)
 		if !ok || genDecl.Tok != token.TYPE {
 			continue
@@ -65,11 +53,11 @@ func appcmdTransportViolationsInFile(filename string) ([]Violation, error) {
 				continue
 			}
 			if transportContractType(typeSpec.Name.Name) {
-				violations = append(violations, violationAt(fileSet, filename, typeSpec.Pos(), "appcmd must not declare DTO/TDO types; place transport contracts in handler"))
+				violations = append(violations, violationAt(file.Fset, file.AbsPath, typeSpec.Pos(), "appcmd must not declare DTO/TDO types; place transport contracts in handler"))
 			}
 		}
 	}
-	ast.Inspect(parsedFile, func(node ast.Node) bool {
+	ast.Inspect(file.AST, func(node ast.Node) bool {
 		call, ok := node.(*ast.CallExpr)
 		if !ok {
 			return true
@@ -83,19 +71,15 @@ func appcmdTransportViolationsInFile(filename string) ([]Violation, error) {
 			return true
 		}
 		if selector.Sel.Name == "Register" || selector.Sel.Name == "NewGroup" {
-			violations = append(violations, violationAt(fileSet, filename, selector.Pos(), "appcmd must not register huma routes; place transport routes in handler"))
+			violations = append(violations, violationAt(file.Fset, file.AbsPath, selector.Pos(), "appcmd must not register huma routes; place transport routes in handler"))
 		}
 		return true
 	})
-	return violations, nil
+	return violations
 }
 
-func isAppcmdFile(root string, file string) bool {
-	rel, err := filepath.Rel(root, file)
-	if err != nil {
-		return false
-	}
-	for _, part := range strings.Split(filepath.ToSlash(rel), "/") {
+func isAppcmdFile(file rulekit.GoFile) bool {
+	for _, part := range strings.Split(file.RelPath, "/") {
 		if part == "appcmd" {
 			return true
 		}

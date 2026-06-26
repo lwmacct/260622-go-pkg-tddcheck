@@ -2,9 +2,6 @@ package filelayout
 
 import (
 	"fmt"
-	"go/parser"
-	"go/token"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -29,6 +26,24 @@ func New(root string, options ...rulekit.Option) Rules {
 	return Rules{root: values.Root, config: values.Config}
 }
 
+func (r Rules) ID() string {
+	return RuleID
+}
+
+func (r Rules) Check(context *rulekit.Context) ([]rulekit.Diagnostic, error) {
+	values := violationsInContext(context)
+	diagnostics := make([]rulekit.Diagnostic, 0, len(values))
+	for _, value := range values {
+		diagnostics = append(diagnostics, rulekit.Diagnostic{
+			Rule:    RuleID,
+			File:    value.File,
+			Line:    value.Line,
+			Message: value.Message,
+		})
+	}
+	return diagnostics, nil
+}
+
 func (r Rules) Assert(t *testing.T) {
 	t.Helper()
 
@@ -48,192 +63,126 @@ func (r Rules) Assert(t *testing.T) {
 }
 
 func (r Rules) Violations() ([]Violation, error) {
-	root, err := rulekit.ResolveRuleRoot(r.root, RuleID)
+	context, err := rulekit.NewContext(r.root, RuleID, r.config)
 	if err != nil {
 		return nil, err
 	}
-	files, err := rulekit.ModuleFiles(root, RuleID, r.config, func(name string) bool {
-		return strings.HasSuffix(name, ".go") && !strings.HasSuffix(name, "_test.go")
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	config := r.config.WithDefaults()
-	var violations []Violation
-	for _, file := range files {
-		if isFreeFile(file) {
-			continue
-		}
-		layer, ok := layerForFile(root, file, config)
-		if !ok {
-			continue
-		}
-		fileViolations, err := violationsInFile(config, layer, file)
-		if err != nil {
-			return nil, err
-		}
-		violations = append(violations, fileViolations...)
-	}
-	violations = append(violations, serviceSubjectViolations(root, files, config)...)
-	appcmdViolations, err := appcmdTransportViolations(root, files, config)
-	if err != nil {
-		return nil, err
-	}
-	violations = append(violations, appcmdViolations...)
-	return violations, nil
+	return violationsInContext(context), nil
 }
 
-func violationsInFile(config rulekit.Config, layer string, filename string) ([]Violation, error) {
-	if isFreeFile(filename) {
-		return nil, nil
+func violationsInContext(context *rulekit.Context) []Violation {
+	var violations []Violation
+	for _, file := range context.Files {
+		if rulekit.FreeFile(file.Base) {
+			continue
+		}
+		if file.Layer == "" {
+			continue
+		}
+		violations = append(violations, violationsInFile(context.Profile, file)...)
 	}
-	profile := profileFromConfig(config)
-	mode := config.LayerFileNameModes[layer]
-	if mode == "" {
-		mode = rulekit.FileNameModeScopeKind
+	violations = append(violations, serviceSubjectViolations(context)...)
+	violations = append(violations, appcmdTransportViolations(context)...)
+	return violations
+}
+
+func violationsInFile(profile rulekit.Profile, file rulekit.GoFile) []Violation {
+	if rulekit.FreeFile(file.Base) {
+		return nil
 	}
-	base := filepath.Base(filename)
-	parsed, ok := parseFileName(base, mode)
+	layer := file.Layer
+	layerProfile, ok := profile.Layer(layer)
+	if !ok {
+		return nil
+	}
+	mode := layerProfile.FileNameMode
+	parsed, ok := parseFileName(file.Base, mode)
 	if !ok {
 		pattern := "{scope}.{type}.go"
 		if mode == rulekit.FileNameModePackageKind {
 			pattern = "{type}.go"
 		}
 		return []Violation{{
-			File:    rulekit.DisplayFilename(filename),
+			File:    rulekit.DisplayFilename(file.AbsPath),
 			Line:    1,
 			Message: fmt.Sprintf("%s file must use %s naming", layer, pattern),
-		}}, nil
+		}}
 	}
 
+	context := layoutFile{
+		profile: profile,
+		mode:    mode,
+		name:    parsed,
+		file:    file,
+	}
+	return layoutFileViolations(context)
+}
+
+type layoutFile struct {
+	profile rulekit.Profile
+	mode    string
+	name    fileName
+	file    rulekit.GoFile
+}
+
+func layoutFileViolations(context layoutFile) []Violation {
 	var violations []Violation
-	if mode == rulekit.FileNameModeScopeKind && rulekit.StringIn(parsed.scope, config.ForbiddenWeakScopes) {
+	if context.scopeKindMode() && rulekit.StringIn(context.name.scope, context.profile.ForbiddenWeakScopes) {
 		violations = append(violations, Violation{
-			File:    rulekit.DisplayFilename(filename),
+			File:    rulekit.DisplayFilename(context.file.AbsPath),
 			Line:    1,
-			Message: fmt.Sprintf("scope %q is too weak; use a subject name or approved shared scope", parsed.scope),
+			Message: fmt.Sprintf("scope %q is too weak; use a subject name or approved shared scope", context.name.scope),
 		})
 	}
-	if mode == rulekit.FileNameModeScopeKind && !strings.HasPrefix(parsed.scope, architectureScopePrefix) {
-		if escapedKind, ok := escapedKindScope(profile, parsed.scope); ok {
+	if context.scopeKindMode() && !context.architectureScope() {
+		if escapedKind, ok := escapedKindScope(context.profile.EscapedScopeSuffixes, context.name.scope); ok {
 			violations = append(violations, Violation{
-				File:    rulekit.DisplayFilename(filename),
+				File:    rulekit.DisplayFilename(context.file.AbsPath),
 				Line:    1,
-				Message: fmt.Sprintf("scope %q must not encode file type %q; use the subject scope and a single type suffix", parsed.scope, escapedKind),
+				Message: fmt.Sprintf("scope %q must not encode file type %q; use the subject scope and a single type suffix", context.name.scope, escapedKind),
 			})
 		}
 	}
-	if mode == rulekit.FileNameModeScopeKind && !strings.HasPrefix(parsed.scope, architectureScopePrefix) && profile.architectureScopeReserved(parsed.scope) {
+	if context.scopeKindMode() && !context.architectureScope() && context.profile.ArchitectureScopeReserved(context.name.scope) {
 		violations = append(violations, Violation{
-			File:    rulekit.DisplayFilename(filename),
+			File:    rulekit.DisplayFilename(context.file.AbsPath),
 			Line:    1,
-			Message: fmt.Sprintf("architecture scope %q must use x_%s prefix", parsed.scope, parsed.scope),
+			Message: fmt.Sprintf("architecture scope %q must use x_%s prefix", context.name.scope, context.name.scope),
 		})
 	}
-	if mode == rulekit.FileNameModeScopeKind && strings.HasPrefix(parsed.scope, architectureScopePrefix) && !profile.architectureScopeReserved(strings.TrimPrefix(parsed.scope, architectureScopePrefix)) {
+	if context.scopeKindMode() && context.architectureScope() && !context.profile.ArchitectureScopeReserved(strings.TrimPrefix(context.name.scope, architectureScopePrefix)) {
 		violations = append(violations, Violation{
-			File:    rulekit.DisplayFilename(filename),
+			File:    rulekit.DisplayFilename(context.file.AbsPath),
 			Line:    1,
-			Message: fmt.Sprintf("architecture scope %q is not reserved", parsed.scope),
+			Message: fmt.Sprintf("architecture scope %q is not reserved", context.name.scope),
 		})
 	}
-	if !profile.kindAllowed(layer, parsed.kind) {
+	if !context.profile.KindAllowed(context.file.Layer, context.name.kind) {
 		violations = append(violations, Violation{
-			File:    rulekit.DisplayFilename(filename),
+			File:    rulekit.DisplayFilename(context.file.AbsPath),
 			Line:    1,
-			Message: fmt.Sprintf("%s file type %q is not allowed", layer, parsed.kind),
+			Message: fmt.Sprintf("%s file type %q is not allowed", context.file.Layer, context.name.kind),
 		})
 	}
-	if mode == rulekit.FileNameModeScopeKind && strings.HasPrefix(parsed.scope, architectureScopePrefix) && !profile.architectureScopeAllowed(layer, parsed.scope) {
+	if context.scopeKindMode() && context.architectureScope() && !context.profile.ArchitectureScopeAllowed(context.file.Layer, context.name.scope) {
 		violations = append(violations, Violation{
-			File:    rulekit.DisplayFilename(filename),
+			File:    rulekit.DisplayFilename(context.file.AbsPath),
 			Line:    1,
-			Message: fmt.Sprintf("architecture scope %q is not allowed in %s", parsed.scope, layer),
+			Message: fmt.Sprintf("architecture scope %q is not allowed in %s", context.name.scope, context.file.Layer),
 		})
 	}
-	if mode == rulekit.FileNameModeScopeKind {
-		scopeViolations, err := inferredScopeViolations(parsed, filename)
-		if err != nil {
-			return nil, err
-		}
-		violations = append(violations, scopeViolations...)
+	if context.scopeKindMode() {
+		violations = append(violations, inferredScopeViolations(context.name, context.file)...)
 	}
 
-	declViolations, err := declarationViolations(layer, parsed, filename)
-	if err != nil {
-		return nil, err
-	}
-	violations = append(violations, declViolations...)
-	return violations, nil
+	violations = append(violations, declarationViolations(context.name, context.file)...)
+	return violations
 }
 
-func declarationViolations(layer string, name fileName, filename string) ([]Violation, error) {
-	fileSet := token.NewFileSet()
-	parsedFile, err := parser.ParseFile(fileSet, filename, nil, parser.SkipObjectResolution)
-	if err != nil {
-		return nil, err
-	}
-
-	switch name.kind {
-	case "context":
-		if layer == "handler" && name.scope == "x_http" {
-			return architectureContextViolations(fileSet, filename, parsedFile), nil
-		}
-	case "endpoint":
-		if layer == "handler" && name.scope == "x_http" {
-			return architectureEndpointViolations(fileSet, filename, parsedFile), nil
-		}
-	case "dto":
-		return dtoViolations(fileSet, filename, parsedFile), nil
-	case "handler":
-		if layer == "handler" {
-			if strings.HasPrefix(name.scope, architectureScopePrefix) {
-				return architectureHandlerViolations(fileSet, filename, parsedFile), nil
-			}
-			return handlerViolations(fileSet, filename, name, parsedFile), nil
-		}
-	case "mapper":
-		return mapperViolations(fileSet, filename, parsedFile), nil
-	case "middleware":
-		if layer == "handler" && name.scope == "x_http" {
-			return architectureMiddlewareViolations(fileSet, filename, parsedFile), nil
-		}
-	case "commands":
-		return commandsViolations(fileSet, filename, parsedFile), nil
-	case "provider":
-		if layer == "service" {
-			return providerViolations(fileSet, filename, name, parsedFile), nil
-		}
-	case "utils":
-		return utilsViolations(fileSet, filename, parsedFile), nil
-	case "support":
-		if layer == "handler" && name.scope == "x_http" {
-			return architectureSupportViolations(fileSet, filename, parsedFile), nil
-		}
-		return supportViolations(fileSet, filename, layer, name, parsedFile), nil
-	case "service":
-		if layer == "service" {
-			violations := servicePersistenceViolations(fileSet, filename, parsedFile)
-			violations = append(violations, serviceViolations(fileSet, filename, name, parsedFile)...)
-			return violations, nil
-		}
-	case "store":
-		if layer == "repository" {
-			return storeViolations(fileSet, filename, name, parsedFile), nil
-		}
-	case "schema":
-		if layer == "repository" {
-			return schemaViolations(fileSet, filename, name, parsedFile), nil
-		}
-	case "repository":
-		if layer == "repository" {
-			return repositoryViolations(fileSet, filename, name, parsedFile), nil
-		}
-	}
-	return nil, nil
+func (f layoutFile) scopeKindMode() bool {
+	return f.mode == rulekit.FileNameModeScopeKind
 }
 
-func isFreeFile(filename string) bool {
-	return filepath.Base(filename) == "x_free.go"
+func (f layoutFile) architectureScope() bool {
+	return strings.HasPrefix(f.name.scope, architectureScopePrefix)
 }

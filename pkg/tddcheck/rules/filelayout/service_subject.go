@@ -2,31 +2,30 @@ package filelayout
 
 import (
 	"fmt"
-	"path/filepath"
 	"sort"
 	"strings"
 
 	"github.com/lwmacct/260622-go-pkg-tddcheck/pkg/tddcheck/rulekit"
 )
 
-func serviceSubjectViolations(root string, files []string, config rulekit.Config) []Violation {
-	if config.LayerFileNameModes["service"] == rulekit.FileNameModePackageKind {
+func serviceSubjectViolations(context *rulekit.Context) []Violation {
+	serviceLayer, ok := context.Profile.Layer("service")
+	if ok && serviceLayer.FileNameMode == rulekit.FileNameModePackageKind {
 		return nil
 	}
 	type subject struct {
-		files      []string
+		files      []rulekit.GoFile
 		hasService bool
 	}
 	subjects := map[string]*subject{}
-	for _, file := range files {
-		if isFreeFile(file) {
+	for _, file := range context.Files {
+		if rulekit.FreeFile(file.Base) {
 			continue
 		}
-		layer, ok := layerForFile(root, file, config)
-		if !ok || layer != "service" {
+		if file.Layer != "service" {
 			continue
 		}
-		name, ok := parseFileName(filepath.Base(file), rulekit.FileNameModeScopeKind)
+		name, ok := parseFileName(file.Base, rulekit.FileNameModeScopeKind)
 		if !ok || strings.HasPrefix(name.scope, architectureScopePrefix) {
 			continue
 		}
@@ -51,9 +50,11 @@ func serviceSubjectViolations(root string, files []string, config rulekit.Config
 	var violations []Violation
 	for _, scope := range scopes {
 		files := subjects[scope].files
-		sort.Strings(files)
+		sort.Slice(files, func(a, b int) bool {
+			return files[a].AbsPath < files[b].AbsPath
+		})
 		violations = append(violations, Violation{
-			File:    rulekit.DisplayFilename(files[0]),
+			File:    rulekit.DisplayFilename(files[0].AbsPath),
 			Line:    1,
 			Message: fmt.Sprintf("service subject %q must declare %s.service.go with New%sService", scope, scope, upperCamelName(scope)),
 		})

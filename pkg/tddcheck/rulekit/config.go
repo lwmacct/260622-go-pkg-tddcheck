@@ -15,6 +15,22 @@ type Config struct {
 	ForbiddenWeakScopes  []string
 }
 
+type Profile struct {
+	Layers               []LayerProfile
+	DependencyLayers     []string
+	SkipDirs             []string
+	LayerRules           []LayerDependencyRule
+	EscapedScopeSuffixes []string
+	ForbiddenWeakScopes  []string
+}
+
+type LayerProfile struct {
+	Name               string
+	FileNameMode       string
+	FileKinds          []string
+	ArchitectureScopes []string
+}
+
 type LayerDependencyRule struct {
 	SourceLayer             string
 	SourceRelPrefix         string
@@ -26,6 +42,7 @@ type LayerDependencyRule struct {
 }
 
 const (
+	ArchitectureScopePrefix = "x_"
 	FileNameModeScopeKind   = "scope_kind"
 	FileNameModePackageKind = "package_kind"
 )
@@ -113,6 +130,71 @@ func (c Config) WithDefaults() Config {
 		c.ForbiddenWeakScopes = defaults.ForbiddenWeakScopes
 	}
 	return c
+}
+
+func (c Config) Profile() Profile {
+	c = c.WithDefaults()
+	layers := make([]LayerProfile, 0, len(c.LayerDirs))
+	for _, layer := range c.LayerDirs {
+		mode := c.LayerFileNameModes[layer]
+		if mode == "" {
+			mode = FileNameModeScopeKind
+		}
+		layers = append(layers, LayerProfile{
+			Name:               layer,
+			FileNameMode:       mode,
+			FileKinds:          c.LayerFileKinds[layer],
+			ArchitectureScopes: c.ArchitectureScopes[layer],
+		})
+	}
+	return Profile{
+		Layers:               layers,
+		DependencyLayers:     c.DependencyLayerDirs,
+		SkipDirs:             c.SkipDirs,
+		LayerRules:           c.LayerRules,
+		EscapedScopeSuffixes: c.EscapedScopeSuffixes,
+		ForbiddenWeakScopes:  c.ForbiddenWeakScopes,
+	}
+}
+
+func (p Profile) Layer(name string) (LayerProfile, bool) {
+	for _, layer := range p.Layers {
+		if layer.Name == name {
+			return layer, true
+		}
+	}
+	return LayerProfile{}, false
+}
+
+func (p Profile) LayerNames() []string {
+	names := make([]string, 0, len(p.Layers))
+	for _, layer := range p.Layers {
+		names = append(names, layer.Name)
+	}
+	return names
+}
+
+func (p Profile) DependencyLayer(name string) bool {
+	return StringIn(name, p.DependencyLayers)
+}
+
+func (p Profile) KindAllowed(layerName string, kind string) bool {
+	layer, ok := p.Layer(layerName)
+	return ok && StringIn(kind, layer.FileKinds)
+}
+
+func (p Profile) ArchitectureScopeAllowed(layerName string, scope string) bool {
+	layer, ok := p.Layer(layerName)
+	return ok && StringIn(scope, layer.ArchitectureScopes)
+}
+
+func (p Profile) ArchitectureScopeReserved(scope string) bool {
+	for _, layer := range p.Layers {
+		if StringIn(ArchitectureScopePrefix+scope, layer.ArchitectureScopes) {
+			return true
+		}
+	}
+	return false
 }
 
 func StringIn(value string, values []string) bool {

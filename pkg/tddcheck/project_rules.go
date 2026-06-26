@@ -79,27 +79,21 @@ func (r ProjectRules) Check() Result {
 	config := r.Config
 
 	var violations []Violation
-	if values, err := filelayout.New(root, rulekit.WithConfig(config)).Violations(); err != nil {
+	context, err := rulekit.NewContext(root, "project", config)
+	if err != nil {
 		return resultError(err, violations, start)
-	} else {
+	}
+	for _, rule := range defaultRules() {
+		values, err := rule.Check(context)
+		if err != nil {
+			return resultError(err, violations, start)
+		}
 		for _, value := range values {
 			violations = append(violations, Violation{
-				Rule:    filelayout.RuleID,
+				Rule:    value.Rule,
 				File:    value.File,
 				Line:    value.Line,
 				Message: value.Message,
-			})
-		}
-	}
-	if values, err := layerdeps.New(root, rulekit.WithConfig(config)).Violations(); err != nil {
-		return resultError(err, violations, start)
-	} else {
-		for _, value := range values {
-			violations = append(violations, Violation{
-				Rule:    layerdeps.RuleID,
-				File:    value.File,
-				Line:    value.Line,
-				Message: value.Message + ": " + value.ImportPath,
 			})
 		}
 	}
@@ -111,6 +105,13 @@ func (r ProjectRules) Check() Result {
 		Passed:     len(violations) == 0,
 		Violations: violations,
 		Duration:   time.Since(start),
+	}
+}
+
+func defaultRules() []rulekit.Rule {
+	return []rulekit.Rule{
+		filelayout.New(""),
+		layerdeps.New(""),
 	}
 }
 

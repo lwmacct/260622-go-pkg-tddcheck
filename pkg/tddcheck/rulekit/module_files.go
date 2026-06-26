@@ -3,42 +3,10 @@ package rulekit
 import (
 	"errors"
 	"fmt"
-	"io/fs"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 )
-
-func ModuleFiles(root string, ruleName string, config Config, match func(string) bool) ([]string, error) {
-	resolved, err := ResolveRuleRoot(root, ruleName)
-	if err != nil {
-		return nil, err
-	}
-	config = config.WithDefaults()
-
-	var matches []string
-	err = filepath.WalkDir(resolved, func(path string, entry fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if entry.IsDir() {
-			if ShouldSkipModuleScanDir(entry.Name(), config) {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if match(filepath.Base(path)) {
-			matches = append(matches, path)
-		}
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	slices.Sort(matches)
-	return matches, nil
-}
 
 func ResolveRuleRoot(root string, ruleName string) (string, error) {
 	if root == "" {

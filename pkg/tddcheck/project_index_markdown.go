@@ -27,7 +27,9 @@ func (i Index) Markdown(analysis Analysis) string {
 		for _, api := range i.APIs {
 			rows = append(rows, []string{
 				codeCell(api.Method),
-				codeCell(api.Path),
+				codeCell(api.FullPath),
+				codeCell(api.MountPath),
+				codeCell(api.OperationPath),
 				codeCell(api.OperationID),
 				strings.Join(api.Tags, ", "),
 				codeCell(api.Handler),
@@ -36,7 +38,7 @@ func (i Index) Markdown(analysis Analysis) string {
 			})
 		}
 		builder.WriteString(markdowntable.Render(markdowntable.Table{
-			Header: []string{"Method", "Path", "Operation", "Tags", "Handler", "Register", "File"},
+			Header: []string{"Method", "Full Path", "Mount", "Operation Path", "Operation", "Tags", "Handler", "Register", "File"},
 			Rows:   rows,
 		}))
 	}
@@ -50,7 +52,7 @@ func (i Index) Markdown(analysis Analysis) string {
 			rows = append(rows, []string{
 				codeCell(handler.Scope),
 				codeCell(handler.Type),
-				codeCell(handler.Register),
+				codeCell(strings.Join(handler.Registers, ", ")),
 				codeCell(handler.File),
 				methodNames(handler.Methods),
 			})
@@ -149,6 +151,42 @@ func (i Index) Markdown(analysis Analysis) string {
 		}
 	}
 
+	builder.WriteString("\n## Projections\n\n")
+	if len(i.Projections) == 0 {
+		builder.WriteString("No projections found.\n")
+	} else {
+		builder.WriteString(markdowntable.Render(markdowntable.Table{
+			Header: []string{"Model", "Scope", "File", "Extends", "Fields"},
+			Rows:   projectionSummaryRows(i.Projections),
+		}))
+		builder.WriteString("\n")
+		for _, projection := range i.Projections {
+			_, _ = fmt.Fprintf(&builder, "### `%s`\n\n", markdownValue(projection.Model))
+			_, _ = fmt.Fprintf(&builder, "- Scope: `%s`\n", markdownValue(projection.Scope))
+			_, _ = fmt.Fprintf(&builder, "- File: `%s`\n", markdownValue(projection.File))
+			if len(projection.Extends) > 0 {
+				_, _ = fmt.Fprintf(&builder, "- Extends: `%s`\n", markdownValue(strings.Join(projection.Extends, ", ")))
+			}
+			if len(projection.Fields) > 0 {
+				builder.WriteByte('\n')
+				rows := make([][]string, 0, len(projection.Fields))
+				for _, field := range projection.Fields {
+					rows = append(rows, []string{
+						codeCell(field.Name),
+						codeCell(field.Column),
+						codeCell(field.GoType),
+						fieldOptions(field),
+					})
+				}
+				builder.WriteString(markdowntable.Render(markdowntable.Table{
+					Header: []string{"Field", "Column", "Go Type", "Attributes"},
+					Rows:   rows,
+				}))
+			}
+			builder.WriteString("\n")
+		}
+	}
+
 	return strings.TrimRight(builder.String(), "\n") + "\n"
 }
 
@@ -167,6 +205,20 @@ func tableSummaryRows(tables []TableIndex) [][]string {
 			codeCell(table.Alias),
 			fmt.Sprint(len(table.Fields)),
 			fmt.Sprint(len(table.ForeignKeys)),
+		})
+	}
+	return rows
+}
+
+func projectionSummaryRows(projections []ProjectionIndex) [][]string {
+	rows := make([][]string, 0, len(projections))
+	for _, projection := range projections {
+		rows = append(rows, []string{
+			codeCell(projection.Model),
+			codeCell(projection.Scope),
+			codeCell(projection.File),
+			strings.Join(projection.Extends, ", "),
+			fmt.Sprint(len(projection.Fields)),
 		})
 	}
 	return rows

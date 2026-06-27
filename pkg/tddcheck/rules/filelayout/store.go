@@ -96,7 +96,7 @@ func explicitListQualifier(rest string) bool {
 }
 
 func pluralSubject(subject string) string {
-	if strings.HasSuffix(subject, "y") {
+	if strings.HasSuffix(subject, "y") && consonantBeforeTrailingY(subject) {
 		return strings.TrimSuffix(subject, "y") + "ies"
 	}
 	for _, suffix := range []string{"s", "x", "z", "ch", "sh"} {
@@ -105,6 +105,18 @@ func pluralSubject(subject string) string {
 		}
 	}
 	return subject + "s"
+}
+
+func consonantBeforeTrailingY(subject string) bool {
+	if len(subject) < 2 {
+		return false
+	}
+	switch subject[len(subject)-2] {
+	case 'a', 'e', 'i', 'o', 'u', 'A', 'E', 'I', 'O', 'U':
+		return false
+	default:
+		return true
+	}
 }
 
 func storeMethodNameExposesQuery(name string) bool {

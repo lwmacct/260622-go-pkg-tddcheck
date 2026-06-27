@@ -9,35 +9,38 @@ import (
 )
 
 type Index struct {
-	Root       string         `json:"root"`
-	ModulePath string         `json:"modulePath"`
-	APIs       []APIIndex     `json:"apis"`
-	Handlers   []HandlerIndex `json:"handlers"`
-	Services   []ServiceIndex `json:"services"`
-	Stores     []StoreIndex   `json:"stores"`
-	Tables     []TableIndex   `json:"tables"`
+	Root        string            `json:"root"`
+	ModulePath  string            `json:"modulePath"`
+	APIs        []APIIndex        `json:"apis"`
+	Handlers    []HandlerIndex    `json:"handlers"`
+	Services    []ServiceIndex    `json:"services"`
+	Stores      []StoreIndex      `json:"stores"`
+	Tables      []TableIndex      `json:"tables"`
+	Projections []ProjectionIndex `json:"projections,omitempty"`
 
 	projectRoot string
 }
 
 type HandlerIndex struct {
-	Scope    string        `json:"scope"`
-	Type     string        `json:"type,omitempty"`
-	Register string        `json:"register,omitempty"`
-	File     string        `json:"file"`
-	Methods  []MethodIndex `json:"methods,omitempty"`
+	Scope     string        `json:"scope"`
+	Type      string        `json:"type,omitempty"`
+	Registers []string      `json:"registers,omitempty"`
+	File      string        `json:"file"`
+	Methods   []MethodIndex `json:"methods,omitempty"`
 }
 
 type APIIndex struct {
-	Scope       string   `json:"scope"`
-	Method      string   `json:"method,omitempty"`
-	Path        string   `json:"path,omitempty"`
-	OperationID string   `json:"operationId,omitempty"`
-	Tags        []string `json:"tags,omitempty"`
-	Handler     string   `json:"handler,omitempty"`
-	Register    string   `json:"register,omitempty"`
-	File        string   `json:"file"`
-	Line        int      `json:"line,omitempty"`
+	Scope         string   `json:"scope"`
+	Method        string   `json:"method,omitempty"`
+	OperationPath string   `json:"operationPath,omitempty"`
+	MountPath     string   `json:"mountPath,omitempty"`
+	FullPath      string   `json:"fullPath,omitempty"`
+	OperationID   string   `json:"operationId,omitempty"`
+	Tags          []string `json:"tags,omitempty"`
+	Handler       string   `json:"handler,omitempty"`
+	Register      string   `json:"register,omitempty"`
+	File          string   `json:"file"`
+	Line          int      `json:"line,omitempty"`
 }
 
 type ServiceIndex struct {
@@ -70,6 +73,14 @@ type TableIndex struct {
 	ForeignKeys []string     `json:"foreignKeys,omitempty"`
 }
 
+type ProjectionIndex struct {
+	Scope   string       `json:"scope"`
+	Model   string       `json:"model"`
+	File    string       `json:"file"`
+	Extends []string     `json:"extends,omitempty"`
+	Fields  []FieldIndex `json:"fields,omitempty"`
+}
+
 type FieldIndex struct {
 	Name          string `json:"name"`
 	Column        string `json:"column"`
@@ -90,6 +101,7 @@ func (i Index) Text() string {
 	writeServiceText(&builder, i.Services)
 	writeStoreText(&builder, i.Stores)
 	writeTableText(&builder, i.Tables)
+	writeProjectionText(&builder, i.Projections)
 	return strings.TrimRight(builder.String(), "\n")
 }
 
@@ -100,7 +112,13 @@ func writeAPIText(builder *strings.Builder, apis []APIIndex) {
 		return
 	}
 	for _, api := range apis {
-		_, _ = fmt.Fprintf(builder, "- %s %s (%s) %s\n", valueOrUnknown(api.Method), valueOrUnknown(api.Path), api.Scope, api.File)
+		_, _ = fmt.Fprintf(builder, "- %s %s (%s) %s\n", valueOrUnknown(api.Method), valueOrUnknown(api.FullPath), api.Scope, api.File)
+		if api.MountPath != "" {
+			_, _ = fmt.Fprintf(builder, "  mount: %s\n", api.MountPath)
+		}
+		if api.OperationPath != "" && api.OperationPath != api.FullPath {
+			_, _ = fmt.Fprintf(builder, "  operation path: %s\n", api.OperationPath)
+		}
 		if api.OperationID != "" {
 			_, _ = fmt.Fprintf(builder, "  operation: %s\n", api.OperationID)
 		}
@@ -121,10 +139,31 @@ func writeHandlerText(builder *strings.Builder, handlers []HandlerIndex) {
 	}
 	for _, handler := range handlers {
 		_, _ = fmt.Fprintf(builder, "- %s (%s) %s\n", handler.Type, handler.Scope, handler.File)
-		if handler.Register != "" {
-			_, _ = fmt.Fprintf(builder, "  register: %s\n", handler.Register)
+		if len(handler.Registers) > 0 {
+			_, _ = fmt.Fprintf(builder, "  registers: %s\n", strings.Join(handler.Registers, ", "))
 		}
 		writeMethodNames(builder, "  methods", handler.Methods)
+	}
+}
+
+func writeProjectionText(builder *strings.Builder, projections []ProjectionIndex) {
+	builder.WriteString("\nprojections:\n")
+	if len(projections) == 0 {
+		builder.WriteString("- none\n")
+		return
+	}
+	for _, projection := range projections {
+		_, _ = fmt.Fprintf(builder, "- %s (%s) %s\n", projection.Model, projection.Scope, projection.File)
+		if len(projection.Extends) > 0 {
+			_, _ = fmt.Fprintf(builder, "  extends: %s\n", strings.Join(projection.Extends, ", "))
+		}
+		for _, field := range projection.Fields {
+			options := fieldOptions(field)
+			if options != "" {
+				options = " " + options
+			}
+			_, _ = fmt.Fprintf(builder, "  - %s %s `%s`%s\n", field.Name, field.GoType, field.Column, options)
+		}
 	}
 }
 
@@ -249,18 +288,21 @@ func indexFromContext(context *rulekit.Context) Index {
 				result.Stores = append(result.Stores, storeIndexesFromFile(context, file)...)
 			}
 			if strings.HasSuffix(file.Base, ".schema.go") {
-				result.Tables = append(result.Tables, tableIndexesFromFile(context, file)...)
+				tables, projections := schemaIndexesFromFile(context, file)
+				result.Tables = append(result.Tables, tables...)
+				result.Projections = append(result.Projections, projections...)
 			}
 		}
 	}
+	applyRouteMounts(context, &result)
 	sortIndex(result)
 	return result
 }
 
 func sortIndex(index Index) {
 	slices.SortFunc(index.APIs, func(a, b APIIndex) int {
-		if a.Path != b.Path {
-			return strings.Compare(a.Path, b.Path)
+		if a.FullPath != b.FullPath {
+			return strings.Compare(a.FullPath, b.FullPath)
 		}
 		if a.Method != b.Method {
 			return strings.Compare(a.Method, b.Method)
@@ -280,6 +322,9 @@ func sortIndex(index Index) {
 		if a.Table != b.Table {
 			return strings.Compare(a.Table, b.Table)
 		}
+		return strings.Compare(a.Model, b.Model)
+	})
+	slices.SortFunc(index.Projections, func(a, b ProjectionIndex) int {
 		return strings.Compare(a.Model, b.Model)
 	})
 }

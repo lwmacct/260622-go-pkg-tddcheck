@@ -14,7 +14,7 @@ import (
 
 func handlerIndexesFromFile(context *rulekit.Context, file rulekit.GoFile) []HandlerIndex {
 	handlers := map[string]*HandlerIndex{}
-	registerName := ""
+	var registerNames []string
 	for _, decl := range file.AST.Decls {
 		switch typed := decl.(type) {
 		case *ast.GenDecl:
@@ -35,7 +35,7 @@ func handlerIndexesFromFile(context *rulekit.Context, file rulekit.GoFile) []Han
 		case *ast.FuncDecl:
 			if typed.Recv == nil {
 				if strings.HasPrefix(typed.Name.Name, "Register") {
-					registerName = typed.Name.Name
+					registerNames = append(registerNames, typed.Name.Name)
 				}
 				continue
 			}
@@ -52,12 +52,12 @@ func handlerIndexesFromFile(context *rulekit.Context, file rulekit.GoFile) []Han
 	}
 
 	result := make([]HandlerIndex, 0, len(handlers))
-	if len(handlers) == 0 && registerName != "" {
+	if len(handlers) == 0 && len(registerNames) > 0 {
 		handler := ensureHandlerIndex(handlers, context, file, "")
 		handler.Scope = scopeFromFilename(file.Base)
 	}
 	for _, handler := range handlers {
-		handler.Register = registerName
+		handler.Registers = uniqueStrings(registerNames)
 		slicesSortMethods(handler.Methods)
 		result = append(result, *handler)
 	}
@@ -160,7 +160,8 @@ func apiIndexFromCall(context *rulekit.Context, file rulekit.GoFile, scope strin
 		return APIIndex{}, false
 	}
 	operation.Scope = scope
-	operation.Path = joinAPIPath(groups[exprString(file.Fset, call.Args[0])], operation.Path)
+	operation.OperationPath = joinAPIPath(groups[exprString(file.Fset, call.Args[0])], operation.OperationPath)
+	operation.FullPath = operation.OperationPath
 	operation.Register = register
 	operation.File = context.DisplayPath(file.AbsPath)
 	operation.Line = file.Fset.Position(call.Lparen).Line
@@ -191,12 +192,13 @@ func operationIndexFromExpr(file rulekit.GoFile, expr ast.Expr) (APIIndex, bool)
 		case "Method":
 			api.Method = httpMethodName(file, keyValue.Value)
 		case "Path":
-			api.Path = literalString(keyValue.Value)
+			api.OperationPath = literalString(keyValue.Value)
 		case "Tags":
 			api.Tags = literalStringSlice(keyValue.Value)
 		}
 	}
-	return api, api.OperationID != "" || api.Method != "" || api.Path != ""
+	api.FullPath = api.OperationPath
+	return api, api.OperationID != "" || api.Method != "" || api.OperationPath != ""
 }
 
 func apiHandlerName(file rulekit.GoFile, expr ast.Expr) string {
@@ -207,6 +209,354 @@ func apiHandlerName(file rulekit.GoFile, expr ast.Expr) string {
 		return "inline"
 	}
 	return exprString(file.Fset, expr)
+}
+
+func applyRouteMounts(context *rulekit.Context, index *Index) {
+	funcs := routeFuncsFromContext(context)
+	mounts := map[string]string{}
+	queue := []routeCall{{Func: "", Arg: "", MountPath: ""}}
+	for _, call := range rootRouteCalls(context) {
+		queue = append(queue, call)
+	}
+	for _, fn := range funcs {
+		for _, event := range fn.Events {
+			if event.MountPath == "" {
+				continue
+			}
+			queue = append(queue, routeCall{Func: event.Callee, Arg: event.Arg, MountPath: event.MountPath})
+		}
+	}
+	seen := map[routeCall]bool{}
+	for len(queue) > 0 {
+		call := queue[0]
+		queue = queue[1:]
+		if seen[call] {
+			continue
+		}
+		seen[call] = true
+		fn := funcs[call.Func]
+		if fn == nil {
+			continue
+		}
+		for _, event := range fn.Events {
+			mountPath := event.MountPath
+			if mountPath == "" && event.Arg == call.Arg {
+				mountPath = call.MountPath
+			}
+			if mountPath == "" && event.Arg != "" {
+				mountPath = call.MountPath
+			}
+			switch event.Kind {
+			case routeEventRegister:
+				if mountPath == "" {
+					continue
+				}
+				key := apiMountKey(event.Callee, event.File)
+				if previous, ok := mounts[key]; !ok || len(mountPath) > len(previous) {
+					mounts[key] = mountPath
+				}
+			case routeEventCall:
+				queue = append(queue, routeCall{Func: event.Callee, Arg: event.Arg, MountPath: mountPath})
+			}
+		}
+	}
+	for apiIndex := range index.APIs {
+		api := &index.APIs[apiIndex]
+		mountPath := mounts[apiMountKey(api.Register, api.File)]
+		api.MountPath = mountPath
+		api.FullPath = joinAPIPath(mountPath, api.OperationPath)
+	}
+}
+
+type routeEventKind int
+
+const (
+	routeEventCall routeEventKind = iota
+	routeEventRegister
+)
+
+type routeCall struct {
+	Func      string
+	Arg       string
+	MountPath string
+}
+
+type routeFunc struct {
+	Name   string
+	File   string
+	Events []routeEvent
+}
+
+type routeEvent struct {
+	Kind      routeEventKind
+	Callee    string
+	Arg       string
+	MountPath string
+	File      string
+}
+
+func routeFuncsFromContext(context *rulekit.Context) map[string]*routeFunc {
+	funcs := map[string]*routeFunc{}
+	for _, file := range context.Files {
+		if file.Layer != "handler" || rulekit.FreeFile(file.Base) {
+			continue
+		}
+		displayFile := context.DisplayPath(file.AbsPath)
+		for _, decl := range file.AST.Decls {
+			funcDecl, ok := decl.(*ast.FuncDecl)
+			if !ok || funcDecl.Body == nil {
+				continue
+			}
+			name := registerName(funcDecl)
+			fn := &routeFunc{Name: name, File: displayFile}
+			receivers := receiverAliases(funcDecl)
+			apiAliases := apiParamAliases(funcDecl)
+			ast.Inspect(funcDecl.Body, func(node ast.Node) bool {
+				switch typed := node.(type) {
+				case *ast.AssignStmt:
+					recordMountedAPIAliases(file, apiAliases, typed.Lhs, typed.Rhs)
+				case *ast.ValueSpec:
+					recordMountedAPIAliases(file, apiAliases, identExprs(typed.Names), typed.Values)
+				case *ast.CallExpr:
+					fn.Events = append(fn.Events, routeEventsFromCall(file, displayFile, receivers, apiAliases, typed)...)
+				}
+				return true
+			})
+			funcs[name] = fn
+		}
+	}
+	return funcs
+}
+
+func rootRouteCalls(context *rulekit.Context) []routeCall {
+	var calls []routeCall
+	for _, file := range context.Files {
+		if file.Layer != "handler" || rulekit.FreeFile(file.Base) {
+			continue
+		}
+		for _, decl := range file.AST.Decls {
+			funcDecl, ok := decl.(*ast.FuncDecl)
+			if !ok || funcDecl.Body == nil {
+				continue
+			}
+			receivers := receiverAliases(funcDecl)
+			ast.Inspect(funcDecl.Body, func(node ast.Node) bool {
+				call, ok := node.(*ast.CallExpr)
+				if !ok {
+					return true
+				}
+				callee := callName(file, receivers, call.Fun)
+				if callee == "" || (!strings.HasPrefix(callee, "Register") && !strings.Contains(callee, ".Register")) {
+					return true
+				}
+				if len(call.Args) == 0 {
+					return true
+				}
+				mount, ok := mountPathFromAPIExpr(file, call.Args[0])
+				if ok {
+					calls = append(calls, routeCall{Func: callee, Arg: "", MountPath: mount})
+				}
+				return true
+			})
+		}
+	}
+	return calls
+}
+
+func apiParamAliases(funcDecl *ast.FuncDecl) map[string]string {
+	aliases := map[string]string{}
+	if funcDecl.Type.Params == nil {
+		return aliases
+	}
+	for _, field := range funcDecl.Type.Params.List {
+		if !isHumaAPIType(field.Type) {
+			continue
+		}
+		for _, name := range field.Names {
+			aliases[name.Name] = ""
+		}
+	}
+	return aliases
+}
+
+func receiverAliases(funcDecl *ast.FuncDecl) map[string]string {
+	aliases := map[string]string{}
+	if funcDecl.Recv == nil || len(funcDecl.Recv.List) == 0 {
+		return aliases
+	}
+	receiverType := receiverTypeName(funcDecl.Recv)
+	for _, name := range funcDecl.Recv.List[0].Names {
+		aliases[name.Name] = receiverType
+	}
+	return aliases
+}
+
+func isHumaAPIType(expr ast.Expr) bool {
+	selector, ok := expr.(*ast.SelectorExpr)
+	if !ok || selector.Sel.Name != "API" {
+		return false
+	}
+	ident, ok := selector.X.(*ast.Ident)
+	return ok && ident.Name == "huma"
+}
+
+func recordMountedAPIAliases(file rulekit.GoFile, aliases map[string]string, left []ast.Expr, right []ast.Expr) {
+	for index, expr := range right {
+		if index >= len(left) {
+			return
+		}
+		name, ok := left[index].(*ast.Ident)
+		if !ok {
+			continue
+		}
+		if mountPath, ok := mountPathFromAPIExpr(file, expr); ok {
+			aliases[name.Name] = mountPath
+		}
+	}
+}
+
+func routeEventsFromCall(file rulekit.GoFile, displayFile string, receivers map[string]string, apiAliases map[string]string, call *ast.CallExpr) []routeEvent {
+	var events []routeEvent
+	if prefix, body, ok := chiRouteCall(call); ok {
+		events = append(events, routeEventsFromRouteBody(file, displayFile, receivers, apiAliases, prefix, body)...)
+		return events
+	}
+	callee := callName(file, receivers, call.Fun)
+	if callee == "" {
+		return nil
+	}
+	if selector, ok := call.Fun.(*ast.SelectorExpr); ok && selector.Sel.Name == "Register" {
+		return nil
+	}
+	if len(call.Args) == 0 {
+		return nil
+	}
+	argName := exprString(file.Fset, call.Args[0])
+	mountPath, apiArg := apiAliases[argName]
+	if !apiArg && !strings.HasPrefix(callee, "Register") && !strings.Contains(callee, ".Register") {
+		return nil
+	}
+	kind := routeEventCall
+	if registerMethodCall(callee) {
+		kind = routeEventRegister
+	}
+	events = append(events, routeEvent{Kind: kind, Callee: callee, Arg: argName, MountPath: mountPath, File: displayFile})
+	return events
+}
+
+func routeEventsFromRouteBody(file rulekit.GoFile, displayFile string, receivers map[string]string, parentAliases map[string]string, prefix string, body *ast.FuncLit) []routeEvent {
+	if body.Type.Params == nil || len(body.Type.Params.List) == 0 {
+		return nil
+	}
+	aliases := map[string]string{}
+	for name, mountPath := range parentAliases {
+		aliases[name] = mountPath
+	}
+	for _, param := range body.Type.Params.List {
+		for _, name := range param.Names {
+			aliases[name.Name] = joinAPIPath("", prefix)
+		}
+	}
+	var events []routeEvent
+	ast.Inspect(body.Body, func(node ast.Node) bool {
+		switch typed := node.(type) {
+		case *ast.AssignStmt:
+			recordMountedAPIAliases(file, aliases, typed.Lhs, typed.Rhs)
+		case *ast.ValueSpec:
+			recordMountedAPIAliases(file, aliases, identExprs(typed.Names), typed.Values)
+		case *ast.CallExpr:
+			events = append(events, routeEventsFromCall(file, displayFile, receivers, aliases, typed)...)
+		}
+		return true
+	})
+	return events
+}
+
+func chiRouteCall(call *ast.CallExpr) (string, *ast.FuncLit, bool) {
+	selector, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok || selector.Sel.Name != "Route" || len(call.Args) < 2 {
+		return "", nil, false
+	}
+	prefix := literalString(call.Args[0])
+	if prefix == "" {
+		return "", nil, false
+	}
+	body, ok := call.Args[1].(*ast.FuncLit)
+	return prefix, body, ok
+}
+
+func mountPathFromAPIExpr(file rulekit.GoFile, expr ast.Expr) (string, bool) {
+	call, ok := expr.(*ast.CallExpr)
+	if !ok || len(call.Args) == 0 {
+		return "", false
+	}
+	selector, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok || selector.Sel.Name != "New" {
+		return "", false
+	}
+	pkg, ok := selector.X.(*ast.Ident)
+	if !ok || pkg.Name != "humachi" {
+		return "", false
+	}
+	if len(call.Args) >= 2 {
+		if path, ok := httpConfigBasePath(file, call.Args[1]); ok {
+			return path, true
+		}
+	}
+	return "", true
+}
+
+func httpConfigBasePath(file rulekit.GoFile, expr ast.Expr) (string, bool) {
+	call, ok := expr.(*ast.CallExpr)
+	if !ok || len(call.Args) < 2 {
+		return "", false
+	}
+	name := callName(file, nil, call.Fun)
+	if name == "" || (!strings.Contains(strings.ToLower(name), "config") && !strings.Contains(strings.ToLower(name), "http")) {
+		return "", false
+	}
+	return literalString(call.Args[1]), true
+}
+
+func callName(file rulekit.GoFile, receivers map[string]string, expr ast.Expr) string {
+	switch typed := expr.(type) {
+	case *ast.Ident:
+		return typed.Name
+	case *ast.SelectorExpr:
+		left := selectorReceiverName(file, receivers, typed.X)
+		if left == "" {
+			return typed.Sel.Name
+		}
+		return left + "." + typed.Sel.Name
+	}
+	return ""
+}
+
+func selectorReceiverName(file rulekit.GoFile, receivers map[string]string, expr ast.Expr) string {
+	switch typed := expr.(type) {
+	case *ast.Ident:
+		if receiverType := receivers[typed.Name]; receiverType != "" {
+			return receiverType
+		}
+		return typed.Name
+	case *ast.CompositeLit:
+		return exprTypeName(typed.Type)
+	case *ast.StarExpr:
+		return selectorReceiverName(file, receivers, typed.X)
+	}
+	return exprString(file.Fset, expr)
+}
+
+func registerMethodCall(callee string) bool {
+	name := callee
+	if index := strings.LastIndex(name, "."); index >= 0 {
+		name = name[index+1:]
+	}
+	return strings.HasPrefix(name, "register")
+}
+
+func apiMountKey(register string, file string) string {
+	return file + "\x00" + register
 }
 
 func httpMethodName(file rulekit.GoFile, expr ast.Expr) string {
@@ -387,9 +737,10 @@ func storeIndexesFromFile(context *rulekit.Context, file rulekit.GoFile) []Store
 	return []StoreIndex{store}
 }
 
-func tableIndexesFromFile(context *rulekit.Context, file rulekit.GoFile) []TableIndex {
+func schemaIndexesFromFile(context *rulekit.Context, file rulekit.GoFile) ([]TableIndex, []ProjectionIndex) {
 	var tables []TableIndex
-	foreignKeys := foreignKeysFromFile(file)
+	var projections []ProjectionIndex
+	foreignKeys := foreignKeysByModelFromFile(file)
 	for _, decl := range file.AST.Decls {
 		genDecl, ok := decl.(*ast.GenDecl)
 		if !ok || genDecl.Tok != token.TYPE {
@@ -408,19 +759,35 @@ func tableIndexesFromFile(context *rulekit.Context, file rulekit.GoFile) []Table
 				Scope:       scopeFromTypeName(typeSpec.Name.Name, "Model"),
 				Model:       typeSpec.Name.Name,
 				File:        context.DisplayPath(file.AbsPath),
-				ForeignKeys: foreignKeys,
+				ForeignKeys: foreignKeys[typeSpec.Name.Name],
+			}
+			projection := ProjectionIndex{
+				Scope: scopeFromTypeName(typeSpec.Name.Name, "Model"),
+				Model: typeSpec.Name.Name,
+				File:  context.DisplayPath(file.AbsPath),
 			}
 			for _, field := range structType.Fields.List {
 				if embeddedBunBaseModel(field) {
 					table.Table, table.Alias = tableNameFromField(field)
 					continue
 				}
-				table.Fields = append(table.Fields, fieldMapsFromAST(file.Fset, field)...)
+				if embeddedProjectionField(field) {
+					projection.Extends = append(projection.Extends, exprTypeName(field.Type))
+					continue
+				}
+				fields := fieldMapsFromAST(file.Fset, field)
+				table.Fields = append(table.Fields, fields...)
+				projection.Fields = append(projection.Fields, fields...)
 			}
-			tables = append(tables, table)
+			if table.Table != "" {
+				tables = append(tables, table)
+			} else {
+				projection.Extends = uniqueStrings(projection.Extends)
+				projections = append(projections, projection)
+			}
 		}
 	}
-	return tables
+	return tables, projections
 }
 
 func fieldMapsFromAST(fileSet *token.FileSet, field *ast.Field) []FieldIndex {
@@ -480,28 +847,36 @@ func tableNameFromField(field *ast.Field) (string, string) {
 	return table, alias
 }
 
-func foreignKeysFromFile(file rulekit.GoFile) []string {
-	var keys []string
-	ast.Inspect(file.AST, func(node ast.Node) bool {
-		call, ok := node.(*ast.CallExpr)
-		if !ok {
-			return true
+func foreignKeysByModelFromFile(file rulekit.GoFile) map[string][]string {
+	keys := map[string][]string{}
+	for _, decl := range file.AST.Decls {
+		funcDecl, ok := decl.(*ast.FuncDecl)
+		if !ok || funcDecl.Body == nil || funcDecl.Name.Name != "BeforeCreateTable" {
+			continue
 		}
-		selector, ok := call.Fun.(*ast.SelectorExpr)
-		if !ok || selector.Sel.Name != "ForeignKey" || len(call.Args) == 0 {
-			return true
+		receiver := receiverTypeName(funcDecl.Recv)
+		if receiver == "" {
+			continue
 		}
-		literal, ok := call.Args[0].(*ast.BasicLit)
-		if !ok || literal.Kind != token.STRING {
+		ast.Inspect(funcDecl.Body, func(node ast.Node) bool {
+			call, ok := node.(*ast.CallExpr)
+			if !ok {
+				return true
+			}
+			selector, ok := call.Fun.(*ast.SelectorExpr)
+			if !ok || selector.Sel.Name != "ForeignKey" || len(call.Args) == 0 {
+				return true
+			}
+			value := literalString(call.Args[0])
+			if value != "" {
+				keys[receiver] = append(keys[receiver], value)
+			}
 			return true
-		}
-		value, err := strconv.Unquote(literal.Value)
-		if err != nil {
-			return true
-		}
-		keys = append(keys, value)
-		return true
-	})
+		})
+	}
+	for model, values := range keys {
+		keys[model] = uniqueStrings(values)
+	}
 	return keys
 }
 
@@ -515,6 +890,17 @@ func embeddedBunBaseModel(field *ast.Field) bool {
 	}
 	ident, ok := selector.X.(*ast.Ident)
 	return ok && ident.Name == "bun"
+}
+
+func embeddedProjectionField(field *ast.Field) bool {
+	if len(field.Names) > 0 {
+		return false
+	}
+	if embeddedBunBaseModel(field) {
+		return false
+	}
+	name := exprTypeName(field.Type)
+	return strings.HasSuffix(name, "Model")
 }
 
 func bunTag(field *ast.Field) string {
@@ -645,4 +1031,21 @@ func slicesSortStrings(values []string) {
 		}
 		values[j+1] = value
 	}
+}
+
+func uniqueStrings(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	seen := map[string]bool{}
+	var result []string
+	for _, value := range values {
+		if value == "" || seen[value] {
+			continue
+		}
+		seen[value] = true
+		result = append(result, value)
+	}
+	slicesSortStrings(result)
+	return result
 }

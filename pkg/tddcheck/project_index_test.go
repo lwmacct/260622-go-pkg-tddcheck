@@ -124,7 +124,9 @@ func TestAnalysisMarkdownIncludesIndex(t *testing.T) {
 		"- Module: `example.com/app`",
 		"- Violations: `0`",
 		"## APIs",
-		"| `GET`  | `/devices` | `list-devices` | Device | `List`  | `RegisterDevices` | `internal/handler/device.handler.go` |",
+		"| Method | Full Path",
+		"| `GET`  | `/devices`",
+		"| `GET`  | `/devices` | `-`",
 		"## Handlers",
 		"| `device` | `deviceHandler` | `RegisterDevices` | `internal/handler/device.handler.go` | List    |",
 		"## Services",
@@ -180,26 +182,168 @@ func DeviceSchema() {}
 	}
 }
 
+func TestProjectAnalyzeIndexesMultipleHandlerRegisters(t *testing.T) {
+	root := fixture(t, map[string]string{
+		"internal/handler/device.handler.go": `package handler
+import "github.com/danielgtaylor/huma/v2"
+type deviceHandler struct{}
+func RegisterDevices(api huma.API) { deviceHandler{}.registerAdmin(api) }
+func RegisterPublicDevices(api huma.API) { deviceHandler{}.registerPublic(api) }
+func (h deviceHandler) registerAdmin(api huma.API) {}
+func (h deviceHandler) registerPublic(api huma.API) {}
+`,
+	})
+
+	analysis, err := (Project{Root: filepath.Join(root, "internal")}).Analyze()
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertHandlerIndex(t, analysis.ProjectIndex(), "device", "deviceHandler", "RegisterDevices", []string{"registerAdmin", "registerPublic"})
+	assertHandlerIndex(t, analysis.ProjectIndex(), "device", "deviceHandler", "RegisterPublicDevices", []string{"registerAdmin", "registerPublic"})
+}
+
+func TestProjectAnalyzeAssignsForeignKeysToReceiverModel(t *testing.T) {
+	root := fixture(t, map[string]string{
+		"internal/repository/device.schema.go": `package repository
+import (
+	"context"
+	"github.com/uptrace/bun"
+)
+type DeviceModel struct {
+	bun.BaseModel ` + "`" + `bun:"table:devices"` + "`" + `
+	ID int64 ` + "`" + `bun:"id,pk"` + "`" + `
+}
+func (*DeviceModel) BeforeCreateTable(_ context.Context, query *bun.CreateTableQuery) error {
+	query.ForeignKey("(room_id) REFERENCES rooms (id)")
+	return nil
+}
+type DevicePortModel struct {
+	bun.BaseModel ` + "`" + `bun:"table:device_ports"` + "`" + `
+	ID int64 ` + "`" + `bun:"id,pk"` + "`" + `
+}
+func (*DevicePortModel) BeforeCreateTable(_ context.Context, query *bun.CreateTableQuery) error {
+	query.ForeignKey("(device_id) REFERENCES devices (id)")
+	return nil
+}
+type DeviceRowModel struct {
+	DeviceModel ` + "`" + `bun:",extend"` + "`" + `
+	RoomName string ` + "`" + `bun:"room_name"` + "`" + `
+}
+`,
+	})
+
+	analysis, err := (Project{Root: filepath.Join(root, "internal")}).Analyze()
+	if err != nil {
+		t.Fatal(err)
+	}
+	index := analysis.ProjectIndex()
+	devices := findTableIndex(index, "devices")
+	if devices == nil || len(devices.ForeignKeys) != 1 || devices.ForeignKeys[0] != "(room_id) REFERENCES rooms (id)" {
+		t.Fatalf("unexpected devices table: %#v", devices)
+	}
+	ports := findTableIndex(index, "device_ports")
+	if ports == nil || len(ports.ForeignKeys) != 1 || ports.ForeignKeys[0] != "(device_id) REFERENCES devices (id)" {
+		t.Fatalf("unexpected ports table: %#v", ports)
+	}
+	if len(index.Projections) != 1 || index.Projections[0].Model != "DeviceRowModel" || index.Projections[0].Extends[0] != "DeviceModel" {
+		t.Fatalf("expected DeviceRowModel projection, got %#v", index.Projections)
+	}
+}
+
+func TestProjectAnalyzeAppliesChiHumachiMountPaths(t *testing.T) {
+	root := fixture(t, map[string]string{
+		"internal/handler/x_http.endpoint.go": `package handler
+import (
+	"net/http"
+	"github.com/danielgtaylor/huma/v2"
+	"github.com/danielgtaylor/huma/v2/adapters/humachi"
+	"github.com/go-chi/chi/v5"
+)
+type Endpoint struct{}
+func utilHTTPConfig(title string, basePath string) huma.Config { return huma.DefaultConfig(title, "1.0.0") }
+func (e *Endpoint) Handler() http.Handler {
+	router := chi.NewRouter()
+	RegisterRootSystem(humachi.New(router, utilHTTPConfig("Root", "")))
+	router.Route("/api/public", func(publicRouter chi.Router) {
+		publicAPI := humachi.New(publicRouter, utilHTTPConfig("Public", "/api/public"))
+		e.RegisterPublic(publicAPI)
+	})
+	router.Route("/api", func(adminRouter chi.Router) {
+		adminAPI := humachi.New(adminRouter, utilHTTPConfig("Admin", "/api"))
+		e.RegisterAdmin(adminAPI)
+	})
+	return router
+}
+func (e *Endpoint) RegisterAdmin(api huma.API) { RegisterDevices(api) }
+func (e *Endpoint) RegisterPublic(api huma.API) { RegisterPublicDevices(api) }
+`,
+		"internal/handler/system.handler.go": `package handler
+import (
+	"net/http"
+	"github.com/danielgtaylor/huma/v2"
+)
+type systemHandler struct{}
+func RegisterRootSystem(api huma.API) {
+	huma.Register(api, huma.Operation{OperationID: "health", Method: http.MethodGet, Path: "/health"}, systemHandler{}.health)
+}
+func (h systemHandler) health() {}
+`,
+		"internal/handler/device.handler.go": `package handler
+import (
+	"net/http"
+	"github.com/danielgtaylor/huma/v2"
+)
+type deviceHandler struct{}
+func RegisterDevices(api huma.API) { deviceHandler{}.registerAdmin(api) }
+func RegisterPublicDevices(api huma.API) { deviceHandler{}.registerPublic(api) }
+func (h deviceHandler) registerAdmin(api huma.API) {
+	huma.Register(api, huma.Operation{OperationID: "list-devices", Method: http.MethodGet, Path: "/devices"}, h.list)
+}
+func (h deviceHandler) registerPublic(api huma.API) {
+	huma.Register(api, huma.Operation{OperationID: "public-devices", Method: http.MethodGet, Path: "/devices"}, h.publicList)
+}
+func (h deviceHandler) list() {}
+func (h deviceHandler) publicList() {}
+`,
+	})
+
+	analysis, err := (Project{Root: filepath.Join(root, "internal")}).Analyze()
+	if err != nil {
+		t.Fatal(err)
+	}
+	index := analysis.ProjectIndex()
+	assertAPIIndex(t, index, "GET", "/health", "health", "health", nil)
+	admin := findAPIIndex(index, "list-devices")
+	if admin == nil || admin.MountPath != "/api" || admin.OperationPath != "/devices" || admin.FullPath != "/api/devices" {
+		t.Fatalf("unexpected admin api: %#v", admin)
+	}
+	public := findAPIIndex(index, "public-devices")
+	if public == nil || public.MountPath != "/api/public" || public.OperationPath != "/devices" || public.FullPath != "/api/public/devices" {
+		t.Fatalf("unexpected public api: %#v", public)
+	}
+}
+
 func indexFixture() Index {
 	return Index{
 		Root:       "internal",
 		ModulePath: "example.com/app",
 		APIs: []APIIndex{{
-			Scope:       "device",
-			Method:      "GET",
-			Path:        "/devices",
-			OperationID: "list-devices",
-			Tags:        []string{"Device"},
-			Handler:     "List",
-			Register:    "RegisterDevices",
-			File:        "internal/handler/device.handler.go",
+			Scope:         "device",
+			Method:        "GET",
+			OperationPath: "/devices",
+			FullPath:      "/devices",
+			OperationID:   "list-devices",
+			Tags:          []string{"Device"},
+			Handler:       "List",
+			Register:      "RegisterDevices",
+			File:          "internal/handler/device.handler.go",
 		}},
 		Handlers: []HandlerIndex{{
-			Scope:    "device",
-			Type:     "deviceHandler",
-			Register: "RegisterDevices",
-			File:     "internal/handler/device.handler.go",
-			Methods:  []MethodIndex{{Name: "List"}},
+			Scope:     "device",
+			Type:      "deviceHandler",
+			Registers: []string{"RegisterDevices"},
+			File:      "internal/handler/device.handler.go",
+			Methods:   []MethodIndex{{Name: "List"}},
 		}},
 		Services: []ServiceIndex{{
 			Scope:        "device",
@@ -234,7 +378,7 @@ func assertAPIIndex(t *testing.T, index Index, method string, path string, opera
 	t.Helper()
 
 	for _, api := range index.APIs {
-		if api.Method != method || api.Path != path || api.OperationID != operationID {
+		if api.Method != method || api.FullPath != path || api.OperationID != operationID {
 			continue
 		}
 		if api.Handler != handler {
@@ -257,7 +401,7 @@ func assertHandlerIndex(t *testing.T, index Index, scope string, handlerType str
 		if handler.Scope != scope {
 			continue
 		}
-		if handler.Type != handlerType || handler.Register != register {
+		if handler.Type != handlerType || !stringIn(register, handler.Registers) {
 			t.Fatalf("unexpected handler metadata for %s: %#v", scope, handler)
 		}
 		assertMethods(t, handler.Methods, methods)
@@ -321,6 +465,15 @@ func findTableIndex(index Index, table string) *TableIndex {
 	for itemIndex := range index.Tables {
 		if index.Tables[itemIndex].Table == table {
 			return &index.Tables[itemIndex]
+		}
+	}
+	return nil
+}
+
+func findAPIIndex(index Index, operationID string) *APIIndex {
+	for itemIndex := range index.APIs {
+		if index.APIs[itemIndex].OperationID == operationID {
+			return &index.APIs[itemIndex]
 		}
 	}
 	return nil

@@ -79,3 +79,22 @@ func (s *Store) listDevices(ctx context.Context, enabledOnly bool) ([]string, er
 		t.Fatalf("expected no violations, got: %#v", violations)
 	}
 }
+
+func TestViolationsAllowsStorePluralSubjectAfterVowelY(t *testing.T) {
+	root := fixture(t, map[string]string{
+		"internal/repository/api_key.store.go": `package repository
+import "context"
+func (s *Store) ListAPIKeys(ctx context.Context) ([]string, error) { return nil, nil }
+func (s *Store) ListAPIKeysByStatus(ctx context.Context) ([]string, error) { return nil, nil }
+func (s *Store) CountAPIKeys(ctx context.Context) (int, error) { return 0, nil }
+`,
+	})
+
+	violations, err := New(filepath.Join(root, "internal")).Violations()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(violations) > 0 {
+		t.Fatalf("expected no violations, got: %#v", violations)
+	}
+}

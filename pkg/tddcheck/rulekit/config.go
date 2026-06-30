@@ -86,7 +86,6 @@ func DefaultConfig() Config {
 			"schema",
 			"utils",
 			"commands",
-			"model",
 			"constants",
 			"errors",
 			"validation",

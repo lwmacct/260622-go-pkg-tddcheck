@@ -40,3 +40,13 @@ func assertViolationContains(t *testing.T, violations []Violation, needle string
 	}
 	t.Fatalf("expected violation containing %q, got %#v", needle, violations)
 }
+
+func assertNoViolationContains(t *testing.T, violations []Violation, needle string) {
+	t.Helper()
+
+	for _, violation := range violations {
+		if strings.Contains(violation.Message, needle) {
+			t.Fatalf("unexpected violation containing %q: %#v", needle, violations)
+		}
+	}
+}

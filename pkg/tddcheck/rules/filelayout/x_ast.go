@@ -151,6 +151,8 @@ func commonInitialism(value string) (string, bool) {
 		return "ID", true
 	case "ip":
 		return "IP", true
+	case "llm":
+		return "LLM", true
 	case "ssh":
 		return "SSH", true
 	case "tls":

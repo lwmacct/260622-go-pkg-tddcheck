@@ -6,9 +6,9 @@ import (
 )
 
 func TestUpperCamelNamePreservesCommonInitialisms(t *testing.T) {
-	got := upperCamelName("node_ws_tunnel")
-	if got != "NodeWSTunnel" {
-		t.Fatalf("upperCamelName() = %q, want NodeWSTunnel", got)
+	got := upperCamelName("node_ws_tunnel_llm")
+	if got != "NodeWSTunnelLLM" {
+		t.Fatalf("upperCamelName() = %q, want NodeWSTunnelLLM", got)
 	}
 }
 
@@ -16,6 +16,7 @@ func TestSnakeNamePreservesCommonInitialisms(t *testing.T) {
 	tests := map[string]string{
 		"IdentitySSHKey": "identity_ssh_key",
 		"NodeWSTunnel":   "node_ws_tunnel",
+		"LLMProvider":    "llm_provider",
 	}
 	for input, want := range tests {
 		if got := snakeName(input); got != want {

@@ -1,401 +1,82 @@
 # go-pkg-tddcheck
 
-`tddcheck` 是一个面向 Go 项目的架构规则检查器，用来约束分层目录、文件命名、声明内容和跨层 import。
+`tddcheck` 是一个面向 Go 项目的架构规则检查器。它通过静态扫描约束分层目录、文件命名、声明内容和跨层 import，并从同一次扫描生成架构索引。
 
-默认规则针对 `handler` / `service` / `repository` 三层，也可以通过 `Config` 改成项目自己的层名和依赖约束。
+默认架构包含 `handler`、`service` 和 `repository` 三层，也可以通过 `Config` 定义项目自己的分层和依赖规则。
 
-## 使用方式
+## 安装
 
-命令行运行架构检查：
+```bash
+go install github.com/lwmacct/260622-go-pkg-tddcheck/cmd/tddcheck@latest
+```
+
+## 快速开始
+
+在命令行检查默认的 `internal` 目录：
+
+```bash
+tddcheck check --root internal
+```
+
+也可以把架构检查固定为项目测试：
+
+```go
+package tddcheck_test
+
+import (
+	"testing"
+
+	"github.com/lwmacct/260622-go-pkg-tddcheck/pkg/tddcheck"
+)
+
+func TestArchitecture(t *testing.T) {
+	tddcheck.Project{Root: "internal"}.Assert(t)
+}
+```
+
+## CLI
+
+```text
+tddcheck check    运行架构检查
+tddcheck index    输出架构索引
+tddcheck doc      生成 Markdown 架构文档
+tddcheck version  输出版本
+```
+
+常用命令：
+
+```bash
+tddcheck index --root internal
+tddcheck index --root internal --format json
+tddcheck doc --root internal --output docs/tddcheck.index.gen.md
+```
+
+CLI 只接受完整长参数，例如 `--root`、`--format` 和 `--output`。直接运行 `tddcheck` 等同于检查默认的 `internal` 目录。
+
+退出码：
+
+```text
+0  命令成功，check 未发现违规
+1  check 发现架构违规
+2  参数、项目解析或输出操作失败
+```
+
+在源码仓库中也可以直接运行：
 
 ```bash
 go run ./cmd/tddcheck check --root internal
 ```
 
-打印版本：
+## 文档
+
+- [Go 包文档](https://pkg.go.dev/github.com/lwmacct/260622-go-pkg-tddcheck/pkg/tddcheck)：`Project`、`Analysis`、配置和架构索引 API。
+- [默认规则与配置](docs/default-rules.md)：默认分层、文件类型、内容规则、依赖方向和自定义示例。
+
+`Project.Analyze` 适合需要结构化违规和索引数据的集成；测试通常直接使用 `Project.Assert`。生成并提交架构索引文档时，可以使用 CLI 的 `doc` 命令或 `Project.WriteDoc`。
+
+## 开发
 
 ```bash
-go run ./cmd/tddcheck version
-```
-
-输出架构索引：
-
-```bash
-go run ./cmd/tddcheck index --root internal
-go run ./cmd/tddcheck index --root internal --format json
-```
-
-生成架构索引文档：
-
-```bash
-go run ./cmd/tddcheck doc --root internal --output docs/tddcheck.index.gen.md
-```
-
-CLI 使用子命令：`check`、`index`、`doc`、`version`。参数只接受完整长参数，例如 `--root`、`--format`、`--output`。
-
-在项目测试中引用：
-
-```go
-package tddcheck_test
-
-import (
-	"testing"
-
-	"github.com/lwmacct/260622-go-pkg-tddcheck/pkg/tddcheck"
-)
-
-func TestRules(t *testing.T) {
-	tddcheck.Project{Root: "internal"}.Assert(t)
-}
-```
-
-生成架构索引文档：
-
-```go
-package tddcheck_test
-
-import (
-	"testing"
-
-	"github.com/lwmacct/260622-go-pkg-tddcheck/pkg/tddcheck"
-)
-
-func TestWriteTDDCheckIndex(t *testing.T) {
-	tddcheck.Project{Root: "internal"}.WriteDoc(t, "")
-}
-```
-
-默认写入 `docs/tddcheck.index.gen.md`。也可以显式指定输出路径：
-
-```go
-tddcheck.Project{
-	Root:   "internal",
-	Config: tddcheck.DefaultConfig(),
-}.WriteDoc(t, "docs/tddcheck.index.gen.md")
-```
-
-运行本地架构检查时建议使用：
-
-```bash
-go test -count=1 ./internal/testutil/tddcheck
-```
-
-`Project.Analyze()` 会返回 `Analysis`，其中包含 `Root`、`ModulePath`、`Index`、`Violations` 和 `Duration`。`Analysis.Text()` 会输出和 CLI check 类似的文本。
-
-`Analysis.ProjectIndex()` 会返回 `Index`，提取 API route、handler、service、repository store 和 schema 表结构。`Index.Text()` 用于 CLI index text 输出，`Analysis.Markdown()` 用于生成 Markdown 文档，`index --format json` 会输出同一份结构化数据。
-
-`Project.WriteDoc(t, outputFile)` 会执行 `Project.Analyze()` 并把 `Analysis.Markdown()` 写入本地文件。相对路径按被检查项目的 `go.mod` 根目录解析，`outputFile` 为空时默认写入 `docs/tddcheck.index.gen.md`。
-
-当前索引识别：
-
-```text
-api          handler 层 Go 文件中的 Huma Register 调用、Operation、Method、Path、Tags 和 handler 方法
-service      *.service.go 中的 *Service、New*Service 和 receiver 方法
-handler      *.handler.go 中的 *Handler、Register* 和 receiver 方法
-store        *.store.go 中的 Store receiver 方法
-repository   *.schema.go 中的 *Model、bun table tag、字段 tag 和 ForeignKey 字符串
-```
-
-## 执行模型
-
-检查流程会先解析项目根目录、读取 `go.mod` module path，然后扫描一次目标目录下的 Go 文件，缓存文件路径、所属层、AST 和 imports。默认架构检查执行两组规则：
-
-```text
-filelayout  文件命名、文件类型、声明内容、部分跨文件约束
-layerdeps   分层 import 依赖约束
-```
-
-以下文件和目录会被特殊处理：
-
-```text
-*_test.go   不参与规则检查
-x_free.go   跳过 filelayout 和 layerdeps 检查
-.git/.hg/.svn/vendor/node_modules/dist/build 默认跳过扫描
-```
-
-## 默认分层
-
-默认被 filelayout 检查的层目录：
-
-```text
-handler
-service
-repository
-```
-
-默认也使用这些层做依赖检查。可以用 `DependencyLayerDirs` 添加只参与依赖检查、不参与文件布局检查的层，例如 `runtime` 或 `appcmd`。
-
-## 文件命名
-
-默认命名模式是 `scope_kind`：
-
-```text
-{subject}.{type}.go
-x_{scope}.{type}.go
-```
-
-`subject` 表示业务主题，不限定为 HTTP/REST resource。`x_` 文件表示架构/共享 scope；`scope` 必须属于所在层的架构 scope 白名单，`type` 仍按所在层允许的文件类型检查。
-
-示例：
-
-```text
-internal/handler/device.handler.go
-internal/handler/device.dto.go
-internal/handler/x_shared.dto.go
-internal/handler/x_http.endpoint.go
-internal/handler/x_http.context.go
-
-internal/service/device.service.go
-internal/service/device.commands.go
-internal/service/device.provider.go
-internal/service/x_shared.support.go
-
-internal/repository/device.support.go
-internal/repository/device.store.go
-internal/repository/x_shared.support.go
-internal/repository/x_store.repository.go
-```
-
-拒绝示例：
-
-```text
-device_handler.go
-shared.model.go
-device_update.utils.go
-device.models.go
-device.writes.go
-device.database.go
-helper.utils.go
-```
-
-也可以把某一层改成 `package_kind` 命名模式，此时文件名使用：
-
-```text
-{type}.go
-```
-
-这适合 `internal/adapter/httpauth/service.go` 这类目录即业务 scope 的布局。
-
-## 默认文件类型
-
-各层允许的文件类型：
-
-```text
-handler:    support, mapper, context, dto, endpoint, handler, middleware, utils
-service:    support, mapper, commands, provider, service
-repository: support, repository, schema, store
-```
-
-列表顺序约定为：跨层共有项放前面，层专属项放后面。下面的架构 scope 和示例也遵循这个顺序。
-
-各层允许的架构 scope：
-
-```text
-handler:    x_shared, x_http
-service:    x_shared
-repository: x_shared, x_store
-```
-
-常见架构文件示例：
-
-```text
-handler:
-  x_shared.support.go, x_shared.mapper.go, x_shared.dto.go, x_shared.handler.go, x_shared.utils.go
-  x_http.context.go, x_http.endpoint.go, x_http.middleware.go, x_http.support.go
-
-service:
-  x_shared.support.go, x_shared.mapper.go
-
-repository:
-  x_shared.support.go
-  x_store.repository.go
-```
-
-## 内容规则
-
-```text
-*.support.go      声明类型、const、Err* var、util*/validate*/normalize*/Wrap*/Is*/As* 函数
-*.mapper.go       只能声明包级 To* 函数；禁止 context/database/http/huma/ORM 相关 import
-*.service.go      service 层声明一个 {Subject}Service、New{Subject}Service 和 service receiver 方法
-*.repository.go   repository 层只能用于 x_store.repository.go；必须声明 Store struct 和 NewStore
-*.store.go        repository 层声明 Store receiver 方法；方法需接受 context.Context 且最后返回 error
-*.handler.go      handler 层声明 {subject}Handler、Register* 函数和 handler receiver 方法
-*.dto.go          只能声明 DTO/DTOs 类型；不能声明函数
-*.context.go      仅 handler/x_http 使用；声明私有 *Key 类型和 Context* / *FromContext helper
-*.endpoint.go     仅 handler/x_http 使用；必须声明 Endpoint struct 和 NewEndpoint
-*.middleware.go   仅 handler/x_http 使用；声明 Middleware、Endpoint/private receiver 方法和 util* helper
-*.utils.go        只能声明包级 util* 函数
-*.commands.go     只能声明类型；类型名必须以 Request、Response、Result 或 Item 结尾
-*.provider.go     service 层声明 {Subject}Provider、New* 构造和 provider receiver 方法
-*.schema.go       repository 层声明 {Subject}*Model struct、schema 生命周期函数和 *Model receiver hook
-```
-
-额外约束：
-
-```text
-service 文件不得直接依赖 database/sql、gorm、bun、pgx、mongo、firestore、dynamodb 等持久化 API
-service 文件不得引用 repository.*Model
-service/provider/support 类型不得使用 DTO、Request、Response、Result、Item 等传输/命令后缀
-service/provider/support 类型不得声明 json/query/path/bun 等传输或持久化 tag
-repository support 不得声明 *Model 或 ORM tag；schema model 必须放在 .schema.go
-appcmd 作为依赖层启用时，不得 import huma、注册 huma route 或声明 DTO/TDO 类型
-```
-
-## 命名规则
-
-```text
-资源 scope 使用 snake_case
-架构 scope 使用 x_ 前缀
-禁止使用 common、default、helper、helpers、misc、util、utils 等弱 scope
-资源 scope 不能把文件类型词编码进 scope，例如 device_update、device_mapper
-mapper 函数必须以 To 开头
-utils 函数必须以 util 开头
-support 函数必须以 util、validate、normalize、Wrap、Is 或 As 开头
-```
-
-业务 scope 会从声明名中推断 snake_case。例如 `DeviceGroupService` 对应 `device_group.service.go`。
-
-service 层同一业务 subject 如果声明了 `commands`、`provider` 或 `support` 等文件，默认也必须声明对应的 `{subject}.service.go` 和 `New{Subject}Service`。`x_` 架构 scope 不受这个要求影响。
-
-## 分层依赖
-
-默认禁止的 import：
-
-```text
-handler    -> repository
-service    -> handler
-repository -> handler
-repository -> service
-```
-
-`layerdeps` 只检查当前 module 的 `internal/` 下 import。例如 module 为 `example.com/app` 时，会识别：
-
-```text
-example.com/app/internal/service
-example.com/app/internal/repository/device
-```
-
-`x_free.go` 不参与分层依赖检查。
-
-## 架构索引
-
-架构索引是只读分析结果，不参与架构规则是否通过的判定。它复用同一套目录、文件命名和 schema 约束，因此不需要连接数据库，也不需要执行业务代码。
-
-CLI text 输出适合人工查看：
-
-```bash
-go run ./cmd/tddcheck index --root internal
-```
-
-CLI JSON 输出适合被脚本读取：
-
-```bash
-go run ./cmd/tddcheck index --root internal --format json
-```
-
-测试生成 Markdown 文档适合把架构索引提交到项目仓库：
-
-```go
-func TestWriteTDDCheckIndex(t *testing.T) {
-	tddcheck.Project{Root: "internal"}.WriteDoc(t, "")
-}
-```
-
-生成文档中的表格由 `pkg/markdowntable` 渲染，会按列宽对齐 Markdown pipe table，便于审阅 diff。
-
-## 配置
-
-默认配置：
-
-```go
-config := tddcheck.DefaultConfig()
-```
-
-自定义配置示例：
-
-```go
-func TestRules(t *testing.T) {
-	tddcheck.Project{
-		Root: "internal",
-		Config: tddcheck.Config{
-			LayerDirs: []string{"adapter"},
-			DependencyLayerDirs: []string{"adapter", "runtime", "service"},
-			LayerFileNameModes: map[string]string{
-				"adapter": tddcheck.FileNameModePackageKind,
-			},
-			LayerFileKinds: map[string][]string{
-				"adapter": {"endpoint", "service"},
-			},
-			ArchitectureScopes: map[string][]string{},
-			LayerRules: []tddcheck.LayerDependencyRule{
-				{
-					SourceLayer: "runtime",
-					TargetLayer: "adapter",
-					Message:     "runtime must not import adapter",
-				},
-			},
-		},
-	}.Assert(t)
-}
-```
-
-配置字段：
-
-```text
-LayerDirs             参与 filelayout 检查的层目录名
-DependencyLayerDirs   参与 layerdeps 检查的层目录名；为空时等于 LayerDirs
-SkipDirs              扫描时跳过的目录名
-LayerRules            禁止的 import 依赖规则
-LayerFileNameModes    每层文件命名模式：scope_kind 或 package_kind
-LayerFileKinds        每层允许的文件类型
-ArchitectureScopes    每层允许的 x_ 架构 scope
-EscapedScopeSuffixes  禁止编码进业务 scope 的文件类型/动作词
-ForbiddenWeakScopes   禁止使用的弱业务 scope
-```
-
-`LayerDependencyRule` 支持按相对路径前缀做约束和例外：
-
-```go
-type LayerDependencyRule struct {
-	SourceLayer             string
-	SourceRelPrefix         string
-	ExceptSourceRelPrefixes []string
-	TargetLayer             string
-	TargetRelPrefix         string
-	ExceptTargetRelPrefixes []string
-	Message                 string
-}
-```
-
-示例：只允许部分 adapter import `adapter/sshauth`：
-
-```go
-LayerRules: []tddcheck.LayerDependencyRule{
-	{
-		SourceLayer: "adapter",
-		TargetLayer: "adapter",
-		TargetRelPrefix: "adapter/sshauth",
-		ExceptSourceRelPrefixes: []string{
-			"adapter/sshcmd",
-			"adapter/sshproxyjump",
-		},
-		Message: "only ssh command adapters may import sshauth",
-	},
-}
-```
-
-## 输出
-
-通过时：
-
-```text
-tddcheck: passed
-```
-
-失败时：
-
-```text
-tddcheck: failed
-internal/handler/device.go:1 [filelayout] handler file must use {scope}.{type}.go naming
-internal/handler/device.handler.go:3 [layerdeps] handler must not import repository: example.com/app/internal/repository
+go test ./...
+go vet ./...
 ```

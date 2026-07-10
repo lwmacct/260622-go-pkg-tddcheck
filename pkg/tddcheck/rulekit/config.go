@@ -2,17 +2,30 @@ package rulekit
 
 import "slices"
 
+// Config defines the directories and conventions used by architecture rules.
+// Each nil slice or map is independently populated by [Config.WithDefaults].
 type Config struct {
-	LayerDirs           []string
+	// LayerDirs lists directory names checked by file-layout rules.
+	LayerDirs []string
+	// DependencyLayerDirs lists directory names recognized by dependency rules.
+	// A nil value inherits LayerDirs.
 	DependencyLayerDirs []string
-	SkipDirs            []string
-	LayerRules          []LayerDependencyRule
+	// SkipDirs lists directory names excluded from source scanning.
+	SkipDirs []string
+	// LayerRules lists forbidden import relationships.
+	LayerRules []LayerDependencyRule
 
-	LayerFileNameModes   map[string]string
-	LayerFileKinds       map[string][]string
-	ArchitectureScopes   map[string][]string
+	// LayerFileNameModes maps a layer to a FileNameMode constant.
+	LayerFileNameModes map[string]string
+	// LayerFileKinds maps a layer to its allowed filename kinds.
+	LayerFileKinds map[string][]string
+	// ArchitectureScopes maps a layer to its allowed x_ scopes.
+	ArchitectureScopes map[string][]string
+	// EscapedScopeSuffixes lists kinds and actions that business scopes must not
+	// encode as suffixes.
 	EscapedScopeSuffixes []string
-	ForbiddenWeakScopes  []string
+	// ForbiddenWeakScopes lists ambiguous business scope names.
+	ForbiddenWeakScopes []string
 }
 
 type Profile struct {
@@ -31,14 +44,28 @@ type LayerProfile struct {
 	ArchitectureScopes []string
 }
 
+// LayerDependencyRule describes a forbidden import relationship. Source path
+// prefixes are relative to the analyzed root; target path prefixes are relative
+// to the module's internal directory.
 type LayerDependencyRule struct {
-	SourceLayer             string
-	SourceRelPrefix         string
+	// SourceLayer is the layer containing the importing file.
+	SourceLayer string
+	// SourceRelPrefix optionally restricts importing directories relative to the
+	// analyzed root.
+	SourceRelPrefix string
+	// ExceptSourceRelPrefixes exempts importing directories relative to the
+	// analyzed root.
 	ExceptSourceRelPrefixes []string
-	TargetLayer             string
-	TargetRelPrefix         string
+	// TargetLayer is the layer containing the imported package.
+	TargetLayer string
+	// TargetRelPrefix optionally restricts imported packages relative to the
+	// module's internal directory.
+	TargetRelPrefix string
+	// ExceptTargetRelPrefixes exempts imported packages relative to the module's
+	// internal directory.
 	ExceptTargetRelPrefixes []string
-	Message                 string
+	// Message overrides the default violation message when non-empty.
+	Message string
 }
 
 const (

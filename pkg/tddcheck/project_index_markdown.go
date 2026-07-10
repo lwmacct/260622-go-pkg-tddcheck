@@ -7,10 +7,12 @@ import (
 	"github.com/lwmacct/260622-go-pkg-tddcheck/pkg/markdowntable"
 )
 
+// Markdown renders the analysis as a generated Markdown architecture index.
 func (a Analysis) Markdown() string {
 	return a.ProjectIndex().Markdown(a)
 }
 
+// Markdown renders the index as Markdown using analysis for result metadata.
 func (i Index) Markdown(analysis Analysis) string {
 	var builder strings.Builder
 	builder.WriteString("# tddcheck Architecture Index\n\n")

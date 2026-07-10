@@ -8,6 +8,7 @@ import (
 	"github.com/lwmacct/260622-go-pkg-tddcheck/pkg/tddcheck/rulekit"
 )
 
+// Index is the structured architecture discovered during project analysis.
 type Index struct {
 	Root        string            `json:"root"`
 	ModulePath  string            `json:"modulePath"`
@@ -21,6 +22,7 @@ type Index struct {
 	projectRoot string
 }
 
+// HandlerIndex describes a handler type, its registrations, and methods.
 type HandlerIndex struct {
 	Scope     string        `json:"scope"`
 	Type      string        `json:"type,omitempty"`
@@ -29,6 +31,7 @@ type HandlerIndex struct {
 	Methods   []MethodIndex `json:"methods,omitempty"`
 }
 
+// APIIndex describes a recognized API operation and its registration site.
 type APIIndex struct {
 	Scope         string   `json:"scope"`
 	Method        string   `json:"method,omitempty"`
@@ -43,6 +46,8 @@ type APIIndex struct {
 	Line          int      `json:"line,omitempty"`
 }
 
+// ServiceIndex describes a service type, constructor, methods, and declared
+// dependencies.
 type ServiceIndex struct {
 	Scope        string        `json:"scope"`
 	Type         string        `json:"type"`
@@ -52,17 +57,20 @@ type ServiceIndex struct {
 	Dependencies []string      `json:"dependencies,omitempty"`
 }
 
+// StoreIndex describes the methods associated with a repository store scope.
 type StoreIndex struct {
 	Scope   string        `json:"scope"`
 	File    string        `json:"file"`
 	Methods []MethodIndex `json:"methods,omitempty"`
 }
 
+// MethodIndex identifies a discovered method and its source line.
 type MethodIndex struct {
 	Name string `json:"name"`
 	Line int    `json:"line,omitempty"`
 }
 
+// TableIndex describes a database table model discovered from a schema file.
 type TableIndex struct {
 	Scope       string       `json:"scope"`
 	Model       string       `json:"model"`
@@ -73,6 +81,7 @@ type TableIndex struct {
 	ForeignKeys []string     `json:"foreignKeys,omitempty"`
 }
 
+// ProjectionIndex describes a schema projection and the models it extends.
 type ProjectionIndex struct {
 	Scope   string       `json:"scope"`
 	Model   string       `json:"model"`
@@ -81,6 +90,7 @@ type ProjectionIndex struct {
 	Fields  []FieldIndex `json:"fields,omitempty"`
 }
 
+// FieldIndex describes a Go model field and its database column attributes.
 type FieldIndex struct {
 	Name          string `json:"name"`
 	Column        string `json:"column"`
@@ -92,6 +102,7 @@ type FieldIndex struct {
 	Unique        string `json:"unique,omitempty"`
 }
 
+// Text renders a human-readable architecture index.
 func (i Index) Text() string {
 	var builder strings.Builder
 	_, _ = fmt.Fprintf(&builder, "tddcheck index: %s\n", i.ModulePath)

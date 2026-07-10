@@ -1,0 +1,255 @@
+# tddcheck 默认规则
+
+本文档描述 `tddcheck.DefaultConfig()` 启用的架构规则、扫描边界和可配置项。
+
+## 执行模型
+
+检查流程解析项目根目录和 `go.mod` module path，然后扫描一次目标目录下的 Go 文件，缓存文件路径、所属层、AST 和 imports。默认执行两组规则：
+
+```text
+filelayout  文件命名、文件类型、声明内容和部分跨文件约束
+layerdeps   分层 import 依赖约束
+```
+
+以下文件和目录会被特殊处理：
+
+```text
+*_test.go   不参与扫描
+x_free.go   不参与规则检查和架构索引
+隐藏目录    不参与扫描
+vendor/node_modules/dist/build  默认不参与扫描
+```
+
+## 默认分层
+
+默认被 `filelayout` 检查的层目录：
+
+```text
+handler
+service
+repository
+```
+
+默认也使用这些层做依赖检查。可以用 `DependencyLayerDirs` 添加只参与依赖检查、不参与文件布局检查的层，例如 `runtime` 或 `appcmd`。
+
+## 文件命名
+
+默认命名模式是 `scope_kind`：
+
+```text
+{subject}.{type}.go
+x_{scope}.{type}.go
+```
+
+`subject` 表示业务主题，不限定为 HTTP/REST resource。`x_` 文件表示架构或共享 scope；`scope` 必须属于所在层的架构 scope 白名单，`type` 仍按所在层允许的文件类型检查。
+
+示例：
+
+```text
+internal/handler/device.handler.go
+internal/handler/device.dto.go
+internal/handler/x_shared.dto.go
+internal/handler/x_http.endpoint.go
+internal/handler/x_http.context.go
+
+internal/service/device.service.go
+internal/service/device.commands.go
+internal/service/device.provider.go
+internal/service/x_shared.support.go
+
+internal/repository/device.support.go
+internal/repository/device.store.go
+internal/repository/x_shared.support.go
+internal/repository/x_store.repository.go
+```
+
+拒绝示例：
+
+```text
+device_handler.go
+shared.model.go
+device_update.utils.go
+device.models.go
+device.writes.go
+device.database.go
+helper.utils.go
+```
+
+也可以把某一层改成 `package_kind` 命名模式，此时文件名使用：
+
+```text
+{type}.go
+```
+
+这适合 `internal/adapter/httpauth/service.go` 这类目录即业务 scope 的布局。
+
+## 默认文件类型
+
+各层允许的文件类型：
+
+```text
+handler:    support, mapper, context, dto, endpoint, handler, middleware, utils
+service:    support, mapper, commands, provider, service
+repository: support, repository, schema, store
+```
+
+各层允许的架构 scope：
+
+```text
+handler:    x_shared, x_http
+service:    x_shared
+repository: x_shared, x_store
+```
+
+常见架构文件：
+
+```text
+handler:
+  x_shared.support.go, x_shared.mapper.go, x_shared.dto.go, x_shared.handler.go, x_shared.utils.go
+  x_http.context.go, x_http.endpoint.go, x_http.middleware.go, x_http.support.go
+
+service:
+  x_shared.support.go, x_shared.mapper.go
+
+repository:
+  x_shared.support.go
+  x_store.repository.go
+```
+
+## 内容规则
+
+```text
+*.support.go      声明类型、const、Err* var、util*/validate*/normalize*/Wrap*/Is*/As* 函数
+*.mapper.go       只能声明包级 To* 函数；禁止 context/database/http/huma/ORM 相关 import
+*.service.go      service 层声明一个 {Subject}Service、New{Subject}Service 和 service receiver 方法
+*.repository.go   repository 层只能用于 x_store.repository.go；必须声明 Store struct 和 NewStore
+*.store.go        repository 层声明 Store receiver 方法；方法需接受 context.Context 且最后返回 error
+*.handler.go      handler 层声明 {Subject}Handler、Register* 函数和 handler receiver 方法
+*.dto.go          只能声明 DTO/DTOs 类型；不能声明函数
+*.context.go      仅 handler/x_http 使用；声明私有 *Key 类型和 Context* / *FromContext helper
+*.endpoint.go     仅 handler/x_http 使用；必须声明 Endpoint struct 和 NewEndpoint
+*.middleware.go   仅 handler/x_http 使用；声明 Middleware、Endpoint/private receiver 方法和 util* helper
+*.utils.go        只能声明包级 util* 函数
+*.commands.go     只能声明类型；类型名必须以 Request、Response、Result 或 Item 结尾
+*.provider.go     service 层声明 {Subject}Provider、New* 构造和 provider receiver 方法
+*.schema.go       repository 层声明 {Subject}*Model struct、schema 生命周期函数和 *Model receiver hook
+```
+
+额外约束：
+
+```text
+service 文件不得直接依赖 database/sql、gorm、bun、pgx、mongo、firestore、dynamodb 等持久化 API
+service 文件不得引用 repository.*Model
+service/provider/support 类型不得使用 DTO、Request、Response、Result、Item 等传输或命令后缀
+service/provider/support 类型不得声明 json/query/path/bun 等传输或持久化 tag
+repository support 不得声明 *Model 或 ORM tag；schema model 必须放在 .schema.go
+appcmd 作为依赖层启用时，不得 import huma、注册 huma route 或声明 DTO/TDO 类型
+```
+
+## 命名规则
+
+```text
+资源 scope 使用 snake_case
+架构 scope 使用 x_ 前缀
+禁止使用 common、default、helper、helpers、misc、util、utils 等弱 scope
+资源 scope 不能把文件类型词编码进 scope，例如 device_update、device_mapper
+mapper 函数必须以 To 开头
+utils 函数必须以 util 开头
+support 函数必须以 util、validate、normalize、Wrap、Is 或 As 开头
+```
+
+业务 scope 会从声明名中推断 snake_case。例如 `DeviceGroupService` 对应 `device_group.service.go`。
+
+service 层同一业务 subject 如果声明了 `commands`、`provider` 或 `support` 等文件，默认也必须声明对应的 `{subject}.service.go` 和 `New{Subject}Service`。`x_` 架构 scope 不受这个要求影响。
+
+## 分层依赖
+
+默认禁止的 import：
+
+```text
+handler    -> repository
+service    -> handler
+repository -> handler
+repository -> service
+```
+
+`layerdeps` 只检查当前 module 的 `internal/` 下 import。例如 module 为 `example.com/app` 时，会识别：
+
+```text
+example.com/app/internal/service
+example.com/app/internal/repository/device
+```
+
+`x_free.go` 不参与分层依赖检查。
+
+## 架构索引
+
+架构索引是只读分析结果，不参与架构规则是否通过的判定。它复用同一次静态扫描，不连接数据库，也不执行业务代码。
+
+当前索引识别：
+
+```text
+api          handler 层 Go 文件中的 Huma Register 调用、Operation、Method、Path、Tags 和 handler 方法
+handler      *.handler.go 中的 *Handler、Register* 和 receiver 方法
+service      *.service.go 中的 *Service、New*Service 和 receiver 方法
+store        *.store.go 中的 Store receiver 方法
+repository   *.schema.go 中的 *Model、bun table tag、字段 tag 和 ForeignKey 字符串
+```
+
+## 自定义配置
+
+配置字段：
+
+```text
+LayerDirs             参与 filelayout 检查的层目录名
+DependencyLayerDirs   参与 layerdeps 检查的层目录名；nil 时等于 LayerDirs
+SkipDirs              扫描时跳过的目录名
+LayerRules            禁止的 import 依赖规则
+LayerFileNameModes    每层文件命名模式：scope_kind 或 package_kind
+LayerFileKinds        每层允许的文件类型
+ArchitectureScopes    每层允许的 x_ 架构 scope
+EscapedScopeSuffixes  禁止编码进业务 scope 的文件类型或动作词
+ForbiddenWeakScopes   禁止使用的弱业务 scope
+```
+
+配置的 slice 或 map 字段为 `nil` 时继承默认值；显式设置为非 `nil` 空集合时关闭对应默认项。
+
+自定义分层示例：
+
+```go
+config := tddcheck.Config{
+	LayerDirs:           []string{"adapter"},
+	DependencyLayerDirs: []string{"adapter", "runtime", "service"},
+	LayerFileNameModes: map[string]string{
+		"adapter": tddcheck.FileNameModePackageKind,
+	},
+	LayerFileKinds: map[string][]string{
+		"adapter": {"endpoint", "service"},
+	},
+	ArchitectureScopes: map[string][]string{},
+	LayerRules: []tddcheck.LayerDependencyRule{
+		{
+			SourceLayer: "runtime",
+			TargetLayer: "adapter",
+			Message:     "runtime must not import adapter",
+		},
+	},
+}
+```
+
+`LayerDependencyRule` 支持用相对路径前缀收窄 source 和 target，并为两者配置例外。source 前缀相对分析根目录，target 前缀相对 module 的 `internal/` 目录。例如只允许部分 adapter import `adapter/sshauth`：
+
+```go
+LayerRules: []tddcheck.LayerDependencyRule{
+	{
+		SourceLayer:     "adapter",
+		TargetLayer:     "adapter",
+		TargetRelPrefix: "adapter/sshauth",
+		ExceptSourceRelPrefixes: []string{
+			"adapter/sshcmd",
+			"adapter/sshproxyjump",
+		},
+		Message: "only ssh command adapters may import sshauth",
+	},
+}
+```

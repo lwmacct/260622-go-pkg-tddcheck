@@ -13,23 +13,40 @@ import (
 	"github.com/lwmacct/260622-go-pkg-tddcheck/pkg/tddcheck/rules/layerdeps"
 )
 
+// DefaultDocFile is the module-relative output path used when no Markdown
+// output filename is provided.
 const DefaultDocFile = "docs/tddcheck.index.gen.md"
 
+// Project identifies the module subtree to analyze and the rules to apply.
 type Project struct {
-	Root   string
+	// Root is an absolute path or a path relative to the current Go module. An
+	// empty Root selects "internal".
+	Root string
+	// Config controls scanning and architecture rules. Its zero value uses the
+	// defaults returned by [DefaultConfig].
 	Config Config
 }
 
+// Analysis contains the architecture checks and index produced by one project
+// scan.
 type Analysis struct {
-	Root       string        `json:"root"`
-	ModulePath string        `json:"modulePath"`
-	Index      Index         `json:"index"`
-	Violations []Violation   `json:"violations,omitempty"`
-	Duration   time.Duration `json:"duration"`
+	// Root is the analyzed root displayed relative to the module when possible.
+	Root string `json:"root"`
+	// ModulePath is the module directive read from go.mod.
+	ModulePath string `json:"modulePath"`
+	// Index is the structured architecture index.
+	Index Index `json:"index"`
+	// Violations contains all failed architecture rules in stable text order.
+	Violations []Violation `json:"violations,omitempty"`
+	// Duration is the elapsed analysis time.
+	Duration time.Duration `json:"duration"`
 
 	projectRoot string
 }
 
+// Analyze scans the project once and returns its rule violations and
+// architecture index. Errors describe failures to resolve, read, or parse the
+// project; architecture rule failures are returned in [Analysis.Violations].
 func (p Project) Analyze() (Analysis, error) {
 	start := time.Now()
 	context, err := p.context()
@@ -51,6 +68,8 @@ func (p Project) Analyze() (Analysis, error) {
 	}, nil
 }
 
+// Assert analyzes the project and fails tb on an analysis error or any rule
+// violation.
 func (p Project) Assert(tb testing.TB) {
 	tb.Helper()
 
@@ -63,6 +82,9 @@ func (p Project) Assert(tb testing.TB) {
 	}
 }
 
+// WriteDoc analyzes the project and writes its Markdown architecture index.
+// It fails tb on analysis or filesystem errors. An empty outputFile uses
+// [DefaultDocFile], and relative paths are resolved from the analyzed module.
 func (p Project) WriteDoc(tb testing.TB, outputFile string) {
 	tb.Helper()
 
@@ -86,6 +108,9 @@ func (p Project) WriteDoc(tb testing.TB, outputFile string) {
 	tb.Logf("wrote tddcheck project doc: %s", outputPath)
 }
 
+// WriteMarkdown writes the analysis as a Markdown architecture index. An empty
+// outputFile uses [DefaultDocFile]. For an Analysis returned by
+// [Project.Analyze], relative paths are resolved from the analyzed module.
 func (a Analysis) WriteMarkdown(outputFile string) error {
 	if outputFile == "" {
 		outputFile = DefaultDocFile

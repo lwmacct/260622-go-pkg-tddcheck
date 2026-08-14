@@ -21,30 +21,6 @@ func (i Index) Markdown(analysis Analysis) string {
 	_, _ = fmt.Fprintf(&builder, "- Root: `%s`\n", markdownValue(i.Root))
 	_, _ = fmt.Fprintf(&builder, "- Violations: `%d`\n", len(analysis.Violations))
 
-	builder.WriteString("\n## APIs\n\n")
-	if len(i.APIs) == 0 {
-		builder.WriteString("No APIs found.\n")
-	} else {
-		rows := make([][]string, 0, len(i.APIs))
-		for _, api := range i.APIs {
-			rows = append(rows, []string{
-				codeCell(api.Method),
-				codeCell(api.FullPath),
-				codeCell(api.MountPath),
-				codeCell(api.OperationPath),
-				codeCell(api.OperationID),
-				strings.Join(api.Tags, ", "),
-				codeCell(api.Handler),
-				codeCell(api.Register),
-				codeCell(api.File),
-			})
-		}
-		builder.WriteString(markdowntable.Render(markdowntable.Table{
-			Header: []string{"Method", "Full Path", "Mount", "Operation Path", "Operation", "Tags", "Handler", "Register", "File"},
-			Rows:   rows,
-		}))
-	}
-
 	builder.WriteString("\n## Handlers\n\n")
 	if len(i.Handlers) == 0 {
 		builder.WriteString("No handlers found.\n")

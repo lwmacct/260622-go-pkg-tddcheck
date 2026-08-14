@@ -12,7 +12,6 @@ import (
 type Index struct {
 	Root        string            `json:"root"`
 	ModulePath  string            `json:"modulePath"`
-	APIs        []APIIndex        `json:"apis"`
 	Handlers    []HandlerIndex    `json:"handlers"`
 	Services    []ServiceIndex    `json:"services"`
 	Stores      []StoreIndex      `json:"stores"`
@@ -29,21 +28,6 @@ type HandlerIndex struct {
 	Registers []string      `json:"registers,omitempty"`
 	File      string        `json:"file"`
 	Methods   []MethodIndex `json:"methods,omitempty"`
-}
-
-// APIIndex describes a recognized API operation and its registration site.
-type APIIndex struct {
-	Scope         string   `json:"scope"`
-	Method        string   `json:"method,omitempty"`
-	OperationPath string   `json:"operationPath,omitempty"`
-	MountPath     string   `json:"mountPath,omitempty"`
-	FullPath      string   `json:"fullPath,omitempty"`
-	OperationID   string   `json:"operationId,omitempty"`
-	Tags          []string `json:"tags,omitempty"`
-	Handler       string   `json:"handler,omitempty"`
-	Register      string   `json:"register,omitempty"`
-	File          string   `json:"file"`
-	Line          int      `json:"line,omitempty"`
 }
 
 // ServiceIndex describes a service type, constructor, methods, and declared
@@ -107,39 +91,12 @@ func (i Index) Text() string {
 	var builder strings.Builder
 	_, _ = fmt.Fprintf(&builder, "tddcheck index: %s\n", i.ModulePath)
 	_, _ = fmt.Fprintf(&builder, "root: %s\n", i.Root)
-	writeAPIText(&builder, i.APIs)
 	writeHandlerText(&builder, i.Handlers)
 	writeServiceText(&builder, i.Services)
 	writeStoreText(&builder, i.Stores)
 	writeTableText(&builder, i.Tables)
 	writeProjectionText(&builder, i.Projections)
 	return strings.TrimRight(builder.String(), "\n")
-}
-
-func writeAPIText(builder *strings.Builder, apis []APIIndex) {
-	builder.WriteString("\napis:\n")
-	if len(apis) == 0 {
-		builder.WriteString("- none\n")
-		return
-	}
-	for _, api := range apis {
-		_, _ = fmt.Fprintf(builder, "- %s %s (%s) %s\n", valueOrUnknown(api.Method), valueOrUnknown(api.FullPath), api.Scope, api.File)
-		if api.MountPath != "" {
-			_, _ = fmt.Fprintf(builder, "  mount: %s\n", api.MountPath)
-		}
-		if api.OperationPath != "" && api.OperationPath != api.FullPath {
-			_, _ = fmt.Fprintf(builder, "  operation path: %s\n", api.OperationPath)
-		}
-		if api.OperationID != "" {
-			_, _ = fmt.Fprintf(builder, "  operation: %s\n", api.OperationID)
-		}
-		if api.Handler != "" {
-			_, _ = fmt.Fprintf(builder, "  handler: %s\n", api.Handler)
-		}
-		if len(api.Tags) > 0 {
-			_, _ = fmt.Fprintf(builder, "  tags: %s\n", strings.Join(api.Tags, ", "))
-		}
-	}
 }
 
 func writeHandlerText(builder *strings.Builder, handlers []HandlerIndex) {
@@ -286,7 +243,6 @@ func indexFromContext(context *rulekit.Context) Index {
 		}
 		switch file.Layer {
 		case "handler":
-			result.APIs = append(result.APIs, apiIndexesFromFile(context, file)...)
 			if strings.HasSuffix(file.Base, ".handler.go") {
 				result.Handlers = append(result.Handlers, handlerIndexesFromFile(context, file)...)
 			}
@@ -305,21 +261,11 @@ func indexFromContext(context *rulekit.Context) Index {
 			}
 		}
 	}
-	applyRouteMounts(context, &result)
 	sortIndex(result)
 	return result
 }
 
 func sortIndex(index Index) {
-	slices.SortFunc(index.APIs, func(a, b APIIndex) int {
-		if a.FullPath != b.FullPath {
-			return strings.Compare(a.FullPath, b.FullPath)
-		}
-		if a.Method != b.Method {
-			return strings.Compare(a.Method, b.Method)
-		}
-		return strings.Compare(a.OperationID, b.OperationID)
-	})
 	slices.SortFunc(index.Handlers, func(a, b HandlerIndex) int {
 		return strings.Compare(a.Scope, b.Scope)
 	})
@@ -338,11 +284,4 @@ func sortIndex(index Index) {
 	slices.SortFunc(index.Projections, func(a, b ProjectionIndex) int {
 		return strings.Compare(a.Model, b.Model)
 	})
-}
-
-func valueOrUnknown(value string) string {
-	if value == "" {
-		return "(unknown)"
-	}
-	return value
 }

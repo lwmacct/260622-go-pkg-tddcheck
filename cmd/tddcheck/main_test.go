@@ -40,6 +40,9 @@ func DeviceSchema() {}
 			t.Fatalf("expected stdout to contain %q, got:\n%s", needle, stdout.String())
 		}
 	}
+	if strings.Contains(stdout.String(), "apis:") {
+		t.Fatalf("expected text index not to contain APIs, got:\n%s", stdout.String())
+	}
 }
 
 func TestRunWithArgsIndexCommandJSON(t *testing.T) {
@@ -58,6 +61,9 @@ func NewDeviceService() *DeviceService { return &DeviceService{} }
 	}
 	if !strings.Contains(stdout.String(), `"modulePath": "example.com/app"`) {
 		t.Fatalf("expected json module path, got:\n%s", stdout.String())
+	}
+	if strings.Contains(stdout.String(), `"apis"`) {
+		t.Fatalf("expected json index not to contain APIs, got:\n%s", stdout.String())
 	}
 }
 

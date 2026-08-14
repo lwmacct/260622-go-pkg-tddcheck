@@ -189,12 +189,13 @@ example.com/app/internal/repository/device
 当前索引识别：
 
 ```text
-api          handler 层 Go 文件中的 Huma Register 调用、Operation、Method、Path、Tags 和 handler 方法
 handler      *.handler.go 中的 *Handler、Register* 和 receiver 方法
 service      *.service.go 中的 *Service、New*Service 和 receiver 方法
 store        *.store.go 中的 Store receiver 方法
 repository   *.schema.go 中的 *Model、bun table tag、字段 tag 和 ForeignKey 字符串
 ```
+
+架构索引不识别或表达 API endpoint。API 契约应由项目使用的 API 框架或 OpenAPI 工具生成。
 
 ## 自定义配置
 

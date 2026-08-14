@@ -2,8 +2,8 @@
 //
 // It statically scans a Go module subtree, applies file-layout and
 // layer-dependency rules, and builds an architecture index from the same parsed
-// source files. The index describes discovered APIs, handlers, services,
-// stores, database tables, and projections.
+// source files. The index describes discovered handlers, services, stores,
+// database tables, and projections.
 //
 // # Quick start
 //
@@ -51,7 +51,8 @@
 //
 // Indexing is independent of whether the checks pass. It is based on recognized
 // source declarations and call patterns; it does not execute application code
-// or connect to a database.
+// or connect to a database. API endpoints are not part of the architecture
+// index; use the project's API or OpenAPI tooling for that contract.
 //
 // # Generated documentation
 //

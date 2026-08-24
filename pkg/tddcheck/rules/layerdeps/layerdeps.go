@@ -1,98 +1,67 @@
 package layerdeps
 
 import (
-	"fmt"
+	"context"
+	"path/filepath"
 	"strings"
-	"testing"
 
 	"github.com/lwmacct/260622-go-pkg-tddcheck/pkg/tddcheck/rulekit"
 )
 
 const RuleID = "layerdeps"
 
-type Rules struct {
-	root   string
-	config rulekit.Config
-}
-
 type Violation struct {
 	File       string
 	Line       int
+	Column     int
 	ImportPath string
 	Message    string
 }
 
-func New(root string, options ...rulekit.Option) Rules {
-	values := rulekit.NewRuleOptions(root, options...)
-	return Rules{root: values.Root, config: values.Config}
+func Register(engine *rulekit.Engine) {
+	engine.Register(RuleID, rulekit.FileScope, checkFile)
 }
 
-func (r Rules) ID() string {
-	return RuleID
+func Check(ctx context.Context, root string, config rulekit.Config) ([]Violation, error) {
+	snapshot, err := rulekit.Load(ctx, root, config)
+	if err != nil {
+		return nil, err
+	}
+	return violationsInSnapshot(snapshot), nil
 }
 
-func (r Rules) Check(context *rulekit.Context) ([]rulekit.Diagnostic, error) {
-	values := violationsInContext(context)
+func checkFile(_ context.Context, snapshot *rulekit.Snapshot, file rulekit.GoFile) ([]rulekit.Diagnostic, error) {
+	values := violationsInFile(snapshot, file)
 	diagnostics := make([]rulekit.Diagnostic, 0, len(values))
 	for _, value := range values {
-		diagnostics = append(diagnostics, rulekit.Diagnostic{
-			Rule:    RuleID,
-			File:    value.File,
-			Line:    value.Line,
-			Message: value.Message + ": " + value.ImportPath,
-		})
+		position := rulekit.Position{File: value.File, Line: value.Line, Column: value.Column}
+		diagnostics = append(diagnostics, rulekit.NewDiagnostic(
+			RuleID,
+			rulekit.SeverityError,
+			value.Message+": "+value.ImportPath,
+			position,
+			position,
+		))
 	}
 	return diagnostics, nil
 }
 
-func (r Rules) Assert(t *testing.T) {
-	t.Helper()
-
-	violations, err := r.Violations()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(violations) == 0 {
-		return
-	}
-
-	lines := make([]string, 0, len(violations))
-	for _, violation := range violations {
-		lines = append(lines, fmt.Sprintf(
-			"%s:%d: %s: %s",
-			violation.File,
-			violation.Line,
-			violation.Message,
-			violation.ImportPath,
-		))
-	}
-	t.Fatalf("invalid layer dependencies:\n  - %s", strings.Join(lines, "\n  - "))
-}
-
-func (r Rules) Violations() ([]Violation, error) {
-	context, err := rulekit.NewContext(r.root, RuleID, r.config)
-	if err != nil {
-		return nil, err
-	}
-	return violationsInContext(context), nil
-}
-
-func violationsInContext(context *rulekit.Context) []Violation {
+func violationsInSnapshot(snapshot *rulekit.Snapshot) []Violation {
 	var violations []Violation
-	for _, file := range context.Files {
+	for _, file := range snapshot.Files {
 		if rulekit.FreeFile(file.Base) {
 			continue
 		}
-		violations = append(violations, violationsInFile(context, file)...)
+		violations = append(violations, violationsInFile(snapshot, file)...)
 	}
 	return violations
 }
 
-func violationsInFile(context *rulekit.Context, file rulekit.GoFile) []Violation {
+func violationsInFile(snapshot *rulekit.Snapshot, file rulekit.GoFile) []Violation {
 	if rulekit.FreeFile(file.Base) {
 		return nil
 	}
-	profile := context.Profile
+	profile := snapshot.Profile
 	sourceLayer, sourceRel, ok := sourceLayer(file, profile)
 	if !ok {
 		return nil
@@ -100,7 +69,7 @@ func violationsInFile(context *rulekit.Context, file rulekit.GoFile) []Violation
 
 	var violations []Violation
 	for _, imported := range file.Imports {
-		targetLayer, targetRel, ok := importLayer(context.ModulePath, imported.Path, profile)
+		targetLayer, targetRel, ok := importLayer(snapshot, imported.PackagePath, profile)
 		if !ok {
 			continue
 		}
@@ -111,6 +80,7 @@ func violationsInFile(context *rulekit.Context, file rulekit.GoFile) []Violation
 		violations = append(violations, Violation{
 			File:       rulekit.DisplayFilename(file.AbsPath),
 			Line:       imported.Line,
+			Column:     imported.Column,
 			ImportPath: imported.Path,
 			Message:    message,
 		})
@@ -127,20 +97,37 @@ func sourceLayer(file rulekit.GoFile, profile rulekit.Profile) (string, string, 
 	return "", "", false
 }
 
-func importLayer(modulePath string, importPath string, profile rulekit.Profile) (string, string, bool) {
-	prefix := modulePath + "/internal/"
-	if !strings.HasPrefix(importPath, prefix) {
+func importLayer(snapshot *rulekit.Snapshot, importPath string, profile rulekit.Profile) (string, string, bool) {
+	target, ok := snapshot.Package(importPath)
+	targetRel := ""
+	if ok && target.Dir != "" {
+		rel, err := filepath.Rel(snapshot.Root, target.Dir)
+		if err == nil && rel != ".." && !strings.HasPrefix(filepath.ToSlash(rel), "../") {
+			targetRel = filepath.ToSlash(rel)
+		}
+	}
+	if targetRel == "" {
+		rootRel, err := filepath.Rel(snapshot.ProjectRoot, snapshot.Root)
+		if err != nil {
+			return "", "", false
+		}
+		rootImport := snapshot.ModulePath
+		if rootRel != "." {
+			rootImport += "/" + filepath.ToSlash(rootRel)
+		}
+		if importPath == rootImport {
+			targetRel = "."
+		} else if value, found := strings.CutPrefix(importPath, rootImport+"/"); found {
+			targetRel = value
+		} else {
+			return "", "", false
+		}
+	}
+	targetLayer := rulekit.LayerForRelPath(targetRel, profile.DependencyLayers)
+	if targetLayer == "" {
 		return "", "", false
 	}
-	rel := strings.TrimPrefix(importPath, prefix)
-	if profile.DependencyLayer(rel) {
-		return rel, rel, true
-	}
-	layer, _, ok := strings.Cut(rel, "/")
-	if !ok || !profile.DependencyLayer(layer) {
-		return "", "", false
-	}
-	return layer, rel, true
+	return targetLayer, targetRel, true
 }
 
 func invalidDependency(profile rulekit.Profile, source string, sourceRel string, target string, targetRel string) (string, bool) {

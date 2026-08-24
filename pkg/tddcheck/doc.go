@@ -1,71 +1,44 @@
-// Package tddcheck checks and documents the architecture of a Go project.
+// Package tddcheck analyzes and documents the architecture of Go projects.
 //
-// It statically scans a Go module subtree, applies file-layout and
-// layer-dependency rules, and builds an architecture index from the same parsed
-// source files. The index describes discovered handlers, services, stores,
-// database tables, and projections.
+// Analyzer loads the selected module subtree through the Go build system,
+// giving every rule a shared syntax tree, package graph, and go/types view.
+// Build constraints are honored. Package and type errors are retained for
+// best-effort analysis unless Config.StrictPackages is enabled.
 //
 // # Quick start
 //
-// [Project] is the main entry point. Most projects can enforce the default
-// architecture in a test with [Project.Assert]:
+// Tests can enforce the default handler/service/repository profile with:
 //
 //	func TestArchitecture(t *testing.T) {
-//		tddcheck.Project{Root: "internal"}.Assert(t)
+//		analyzer, err := tddcheck.New(tddcheck.Options{Root: "internal"})
+//		if err != nil {
+//			t.Fatal(err)
+//		}
+//		tddcheck.Assert(t, analyzer)
 //	}
 //
-// Assert reports analysis errors and violations through testing.TB. Programs
-// that need to inspect or format the result should use [Project.Analyze].
-// Analyze returns operational failures as an error; rule failures are recorded
-// in [Analysis.Violations] and can be queried with [Analysis.Passed].
-//
-// # Project roots and scanning
-//
-// An empty [Project.Root] selects "internal". An absolute root is used as-is. A
-// relative root is resolved from the Go module containing the current working
-// directory. The selected root must belong to a module with a readable go.mod
-// and module directive.
-//
-// By default, tddcheck validates handler, service, and repository directories.
-// It checks their file layout and import direction. Files ending in _test.go,
-// hidden directories, and configured skip directories are not scanned. A file
-// named x_free.go is scanned but excluded from checks and the architecture
-// index.
+// Programs should call [Analyzer.Analyze] with their own context. Operational
+// failures are returned as errors; rule failures are stored in
+// [Analysis.Diagnostics] and queried with [Analysis.Passed].
 //
 // # Configuration
 //
-// The zero [Config] has the same behavior as [DefaultConfig]. Defaults are
-// applied independently to each slice or map field: a nil field inherits its
-// default, while a non-nil empty field explicitly disables that default.
+// The zero [Config] uses [DefaultConfig]. Nil collections inherit defaults;
+// non-nil empty collections disable them. Configuration is validated and deep
+// copied by [New], so callers may safely reuse or mutate their input afterward.
+// IncludeTests loads test variants, BuildFlags configures the Go build, and
+// StrictPackages rejects incomplete package graphs.
 //
-// Config can change layer directories, filename modes, allowed file kinds and
-// architecture scopes, skipped directories, and dependency rules. Start with
-// DefaultConfig when changing only a few values; construct Config directly
-// when the project defines a substantially different architecture.
+// # Extensibility
 //
-// # Architecture index
+// Registrars passed to [New] may add rules through [Engine.Register]. Go 1.27
+// generic methods keep file, package, and snapshot rules strongly typed; use
+// [FileScope], [PackageScope], or [SnapshotScope] as appropriate.
 //
-// [Analysis.ProjectIndex] returns the structured [Index]. [Index.Text] renders
-// a human-readable summary. Analysis and its nested index types also expose
-// JSON tags for machine-readable output.
+// # Index and output
 //
-// Indexing is independent of whether the checks pass. It is based on recognized
-// source declarations and call patterns; it does not execute application code
-// or connect to a database. API endpoints are not part of the architecture
-// index; use the project's API or OpenAPI tooling for that contract.
-//
-// # Generated documentation
-//
-// [Analysis.Markdown] renders the index and violation count as Markdown.
-// [Analysis.WriteMarkdown] writes that document and returns filesystem errors.
-// Relative output paths are resolved from the analyzed module's go.mod
-// directory, and an empty output path uses [DefaultDocFile].
-//
-// Tests that keep generated architecture documentation in the repository can
-// use [Project.WriteDoc], which performs the analysis and reports failures
-// through testing.TB:
-//
-//	func TestArchitectureDoc(t *testing.T) {
-//		tddcheck.Project{Root: "internal"}.WriteDoc(t, "")
-//	}
+// The same analysis-local Snapshot drives diagnostics and the architecture [Index].
+// [Analysis.Markdown] renders generated documentation and
+// [Analysis.WriteMarkdown] writes it relative to the analyzed module. The CLI
+// emits schema-versioned JSON with encoding/json/v2.
 package tddcheck

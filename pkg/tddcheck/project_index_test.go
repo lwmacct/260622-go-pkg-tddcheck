@@ -48,11 +48,11 @@ func IdentityUserSchema() {}
 `,
 	})
 
-	analysis, err := (Project{Root: filepath.Join(root, "internal")}).Analyze()
+	analysis, err := analyzeRoot(filepath.Join(root, "internal"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	index := analysis.ProjectIndex()
+	index := analysis.ArchitectureIndex()
 
 	if index.ModulePath != "example.com/app" {
 		t.Fatalf("unexpected module path %q", index.ModulePath)
@@ -162,7 +162,13 @@ func DeviceSchema() {}
 		t.Fatal(err)
 	}
 
-	Project{Root: "internal"}.WriteDoc(t, "")
+	analysis, err := analyzeRoot("internal")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := analysis.WriteMarkdown(""); err != nil {
+		t.Fatal(err)
+	}
 
 	data, err := os.ReadFile(filepath.Join(root, DefaultDocFile))
 	if err != nil {
@@ -184,12 +190,12 @@ func (h deviceHandler) registerPublic() {}
 `,
 	})
 
-	analysis, err := (Project{Root: filepath.Join(root, "internal")}).Analyze()
+	analysis, err := analyzeRoot(filepath.Join(root, "internal"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertHandlerIndex(t, analysis.ProjectIndex(), "device", "deviceHandler", "RegisterDevices", []string{"registerAdmin", "registerPublic"})
-	assertHandlerIndex(t, analysis.ProjectIndex(), "device", "deviceHandler", "RegisterPublicDevices", []string{"registerAdmin", "registerPublic"})
+	assertHandlerIndex(t, analysis.ArchitectureIndex(), "device", "deviceHandler", "RegisterDevices", []string{"registerAdmin", "registerPublic"})
+	assertHandlerIndex(t, analysis.ArchitectureIndex(), "device", "deviceHandler", "RegisterPublicDevices", []string{"registerAdmin", "registerPublic"})
 }
 
 func TestProjectAnalyzeAssignsForeignKeysToReceiverModel(t *testing.T) {
@@ -222,11 +228,11 @@ type DeviceRowModel struct {
 `,
 	})
 
-	analysis, err := (Project{Root: filepath.Join(root, "internal")}).Analyze()
+	analysis, err := analyzeRoot(filepath.Join(root, "internal"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	index := analysis.ProjectIndex()
+	index := analysis.ArchitectureIndex()
 	devices := findTableIndex(index, "devices")
 	if devices == nil || len(devices.ForeignKeys) != 1 || devices.ForeignKeys[0] != "(room_id) REFERENCES rooms (id)" {
 		t.Fatalf("unexpected devices table: %#v", devices)

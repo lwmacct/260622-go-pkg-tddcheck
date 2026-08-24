@@ -20,7 +20,7 @@ func (r Repository) List() {}
 `,
 	})
 
-	violations, err := New(filepath.Join(root, "internal")).Violations()
+	violations, err := checkRoot(filepath.Join(root, "internal"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,7 +42,7 @@ func privateHelper() {}
 `,
 	})
 
-	violations, err := New(filepath.Join(root, "internal")).Violations()
+	violations, err := checkRoot(filepath.Join(root, "internal"))
 	if err != nil {
 		t.Fatal(err)
 	}

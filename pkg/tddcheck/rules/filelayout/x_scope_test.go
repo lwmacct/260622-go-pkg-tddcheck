@@ -12,7 +12,7 @@ func ToDeviceGroupRow() {}
 `,
 	})
 
-	violations, err := New(filepath.Join(root, "internal")).Violations()
+	violations, err := checkRoot(filepath.Join(root, "internal"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -30,7 +30,7 @@ func NewEndpoint() *Endpoint { return &Endpoint{} }
 `,
 	})
 
-	violations, err := New(filepath.Join(root, "internal")).Violations()
+	violations, err := checkRoot(filepath.Join(root, "internal"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,7 +45,7 @@ func updateDevice() {}
 `,
 	})
 
-	violations, err := New(filepath.Join(root, "internal")).Violations()
+	violations, err := checkRoot(filepath.Join(root, "internal"))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -3,6 +3,7 @@ package filelayout
 import (
 	"go/ast"
 	"go/token"
+	"go/types"
 	"slices"
 	"strings"
 	"unicode"
@@ -68,23 +69,47 @@ func hasStructTag(typeSpec *ast.TypeSpec, tagName string) bool {
 	return false
 }
 
-func firstParamIsContext(funcDecl *ast.FuncDecl) bool {
+func firstParamIsContext(file rulekit.GoFile, funcDecl *ast.FuncDecl) bool {
 	if funcDecl.Type.Params == nil || len(funcDecl.Type.Params.List) == 0 {
 		return false
 	}
-	return selectorPackage(funcDecl.Type.Params.List[0].Type) == "context"
+	expr := funcDecl.Type.Params.List[0].Type
+	if semanticType := file.TypeOf(expr); semanticType != nil {
+		path, name, ok := namedType(semanticType)
+		return ok && path == "context" && name == "Context"
+	}
+	return selectorPackage(expr) == "context"
 }
 
-func lastResultIsError(funcDecl *ast.FuncDecl) bool {
+func lastResultIsError(file rulekit.GoFile, funcDecl *ast.FuncDecl) bool {
 	results := resultExprs(funcDecl)
 	if len(results) == 0 {
 		return false
 	}
 	last := results[len(results)-1]
+	if semanticType := file.TypeOf(last); semanticType != nil {
+		return types.Identical(types.Unalias(semanticType), types.Universe.Lookup("error").Type())
+	}
 	if ident, ok := last.(*ast.Ident); ok {
 		return ident.Name == "error"
 	}
 	return false
+}
+
+func namedType(value types.Type) (string, string, bool) {
+	value = types.Unalias(value)
+	if pointer, ok := value.(*types.Pointer); ok {
+		value = types.Unalias(pointer.Elem())
+	}
+	named, ok := value.(*types.Named)
+	if !ok || named.Obj() == nil {
+		return "", "", false
+	}
+	path := ""
+	if named.Obj().Pkg() != nil {
+		path = named.Obj().Pkg().Path()
+	}
+	return path, named.Obj().Name(), true
 }
 
 func resultExprs(funcDecl *ast.FuncDecl) []ast.Expr {
@@ -206,7 +231,8 @@ func upperRune(value rune) bool {
 }
 
 func violationAt(fileSet *token.FileSet, filename string, pos token.Pos, message string) Violation {
-	return Violation{File: displayFilename(filename), Line: fileSet.Position(pos).Line, Message: message}
+	position := fileSet.PositionFor(pos, true)
+	return Violation{File: displayFilename(filename), Line: position.Line, Column: position.Column, Message: message}
 }
 
 func displayFilename(filename string) string {

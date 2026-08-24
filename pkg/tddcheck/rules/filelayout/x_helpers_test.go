@@ -1,17 +1,20 @@
 package filelayout
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/lwmacct/260622-go-pkg-tddcheck/pkg/tddcheck/rulekit"
 )
 
 func fixture(t *testing.T, files map[string]string) string {
 	t.Helper()
 
 	root := t.TempDir()
-	writeFile(t, root, "go.mod", "module example.com/app\n\ngo 1.26.4\n")
+	writeFile(t, root, "go.mod", "module example.com/app\n\ngo 1.27.0\n")
 	for name, content := range files {
 		writeFile(t, root, name, content)
 	}
@@ -28,6 +31,14 @@ func writeFile(t *testing.T, root string, name string, content string) {
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func checkRoot(root string, configs ...rulekit.Config) ([]Violation, error) {
+	var config rulekit.Config
+	if len(configs) > 0 {
+		config = configs[0]
+	}
+	return Check(context.Background(), root, config)
 }
 
 func assertViolationContains(t *testing.T, violations []Violation, needle string) {

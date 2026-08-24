@@ -8,13 +8,13 @@ import (
 	"github.com/lwmacct/260622-go-pkg-tddcheck/pkg/tddcheck/rulekit"
 )
 
-func appcmdTransportViolations(context *rulekit.Context) []Violation {
+func appcmdTransportViolations(context *rulekit.Snapshot) []Violation {
 	if !context.Profile.DependencyLayer("appcmd") {
 		return nil
 	}
 	var violations []Violation
 	for _, file := range context.Files {
-		if !isAppcmdFile(file) {
+		if file.IsTest || !isAppcmdFile(file) {
 			continue
 		}
 		violations = append(violations, appcmdTransportViolationsInFile(file)...)

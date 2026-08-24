@@ -20,9 +20,9 @@ func register(api huma.API) {
 `,
 	})
 
-	violations, err := New(filepath.Join(root, "internal"), rulekit.WithConfig(rulekit.Config{
+	violations, err := checkRoot(filepath.Join(root, "internal"), rulekit.Config{
 		DependencyLayerDirs: []string{"appcmd"},
-	})).Violations()
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,9 +42,9 @@ func (app *App) newHTTPAPIHandler() http.Handler {
 `,
 	})
 
-	violations, err := New(filepath.Join(root, "internal"), rulekit.WithConfig(rulekit.Config{
+	violations, err := checkRoot(filepath.Join(root, "internal"), rulekit.Config{
 		DependencyLayerDirs: []string{"appcmd"},
-	})).Violations()
+	})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -26,7 +26,7 @@ func (s *DeviceService) Get() error { return nil }
 `,
 	})
 
-	violations, err := New(filepath.Join(root, "internal")).Violations()
+	violations, err := checkRoot(filepath.Join(root, "internal"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +58,7 @@ func (s *DeviceService) Create() error {
 `,
 	})
 
-	violations, err := New(filepath.Join(root, "internal")).Violations()
+	violations, err := checkRoot(filepath.Join(root, "internal"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,11 +95,28 @@ func (s *Store) FetchDevice(ctx context.Context, id string) (*string, error) { r
 `,
 	})
 
-	violations, err := New(filepath.Join(root, "internal")).Violations()
+	violations, err := checkRoot(filepath.Join(root, "internal"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(violations) != 0 {
 		t.Fatalf("expected no violations, got %#v", violations)
 	}
+}
+
+func TestViolationsAllowsBusinessMethodNamedQuery(t *testing.T) {
+	root := fixture(t, map[string]string{
+		"internal/service/device.service.go": `package service
+type DeviceService struct{}
+func NewDeviceService() *DeviceService { return &DeviceService{} }
+func (s *DeviceService) Query() {}
+func (s *DeviceService) List() { s.Query() }
+`,
+	})
+
+	violations, err := checkRoot(filepath.Join(root, "internal"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertNoViolationContains(t, violations, "persistence APIs directly")
 }

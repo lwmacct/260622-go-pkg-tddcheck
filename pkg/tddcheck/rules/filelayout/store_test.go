@@ -31,7 +31,7 @@ func (s *Store) listDevicesMissingError(ctx context.Context) []string { return n
 `,
 	})
 
-	violations, err := New(filepath.Join(root, "internal")).Violations()
+	violations, err := checkRoot(filepath.Join(root, "internal"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +71,7 @@ func (s *Store) listDevices(ctx context.Context, enabledOnly bool) ([]string, er
 `,
 	})
 
-	violations, err := New(filepath.Join(root, "internal")).Violations()
+	violations, err := checkRoot(filepath.Join(root, "internal"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,11 +90,28 @@ func (s *Store) CountAPIKeys(ctx context.Context) (int, error) { return 0, nil }
 `,
 	})
 
-	violations, err := New(filepath.Join(root, "internal")).Violations()
+	violations, err := checkRoot(filepath.Join(root, "internal"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(violations) > 0 {
 		t.Fatalf("expected no violations, got: %#v", violations)
 	}
+}
+
+func TestViolationsResolveAliasedContextAndErrorTypes(t *testing.T) {
+	root := fixture(t, map[string]string{
+		"internal/repository/device.store.go": `package repository
+import ctx "context"
+type Failure = error
+func (s *Store) ListDevices(_ ctx.Context) ([]string, Failure) { return nil, nil }
+`,
+	})
+
+	violations, err := checkRoot(filepath.Join(root, "internal"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertNoViolationContains(t, violations, "context.Context")
+	assertNoViolationContains(t, violations, "return error")
 }

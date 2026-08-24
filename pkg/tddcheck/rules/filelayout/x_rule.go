@@ -1,88 +1,77 @@
 package filelayout
 
 import (
+	"context"
 	"fmt"
 	"strings"
-	"testing"
 
 	"github.com/lwmacct/260622-go-pkg-tddcheck/pkg/tddcheck/rulekit"
 )
 
 const RuleID = "filelayout"
 
-type Rules struct {
-	root   string
-	config rulekit.Config
-}
-
 type Violation struct {
 	File    string
 	Line    int
+	Column  int
 	Message string
 }
 
-func New(root string, options ...rulekit.Option) Rules {
-	values := rulekit.NewRuleOptions(root, options...)
-	return Rules{root: values.Root, config: values.Config}
+func Register(engine *rulekit.Engine) {
+	engine.Register(RuleID, rulekit.FileScope, checkFile)
+	engine.Register(RuleID, rulekit.SnapshotScope, checkSnapshot)
 }
 
-func (r Rules) ID() string {
-	return RuleID
-}
-
-func (r Rules) Check(context *rulekit.Context) ([]rulekit.Diagnostic, error) {
-	values := violationsInContext(context)
-	diagnostics := make([]rulekit.Diagnostic, 0, len(values))
-	for _, value := range values {
-		diagnostics = append(diagnostics, rulekit.Diagnostic{
-			Rule:    RuleID,
-			File:    value.File,
-			Line:    value.Line,
-			Message: value.Message,
-		})
-	}
-	return diagnostics, nil
-}
-
-func (r Rules) Assert(t *testing.T) {
-	t.Helper()
-
-	violations, err := r.Violations()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(violations) == 0 {
-		return
-	}
-
-	lines := make([]string, 0, len(violations))
-	for _, violation := range violations {
-		lines = append(lines, fmt.Sprintf("%s:%d: %s", violation.File, violation.Line, violation.Message))
-	}
-	t.Fatalf("invalid file layout:\n  - %s", strings.Join(lines, "\n  - "))
-}
-
-func (r Rules) Violations() ([]Violation, error) {
-	context, err := rulekit.NewContext(r.root, RuleID, r.config)
+func Check(ctx context.Context, root string, config rulekit.Config) ([]Violation, error) {
+	config, err := config.Compile()
 	if err != nil {
 		return nil, err
 	}
-	return violationsInContext(context), nil
+	if err := config.ValidateFileLayout(); err != nil {
+		return nil, err
+	}
+	snapshot, err := rulekit.Load(ctx, root, config)
+	if err != nil {
+		return nil, err
+	}
+	return violationsInSnapshot(snapshot), nil
 }
 
-func violationsInContext(context *rulekit.Context) []Violation {
+func checkFile(_ context.Context, snapshot *rulekit.Snapshot, file rulekit.GoFile) ([]rulekit.Diagnostic, error) {
+	if file.IsTest || rulekit.FreeFile(file.Base) || file.Layer == "" {
+		return nil, nil
+	}
+	return diagnostics(violationsInFile(snapshot.Profile, file)), nil
+}
+
+func checkSnapshot(_ context.Context, _ *rulekit.Snapshot, snapshot *rulekit.Snapshot) ([]rulekit.Diagnostic, error) {
+	values := serviceSubjectViolations(snapshot)
+	values = append(values, appcmdTransportViolations(snapshot)...)
+	return diagnostics(values), nil
+}
+
+func diagnostics(values []Violation) []rulekit.Diagnostic {
+	diagnostics := make([]rulekit.Diagnostic, 0, len(values))
+	for _, value := range values {
+		position := rulekit.Position{File: value.File, Line: value.Line, Column: value.Column}
+		diagnostics = append(diagnostics, rulekit.NewDiagnostic(RuleID, rulekit.SeverityError, value.Message, position, position))
+	}
+	return diagnostics
+}
+
+func violationsInSnapshot(snapshot *rulekit.Snapshot) []Violation {
 	var violations []Violation
-	for _, file := range context.Files {
-		if rulekit.FreeFile(file.Base) {
+	for _, file := range snapshot.Files {
+		if file.IsTest || rulekit.FreeFile(file.Base) {
 			continue
 		}
 		if file.Layer == "" {
 			continue
 		}
-		violations = append(violations, violationsInFile(context.Profile, file)...)
+		violations = append(violations, violationsInFile(snapshot.Profile, file)...)
 	}
-	violations = append(violations, serviceSubjectViolations(context)...)
-	violations = append(violations, appcmdTransportViolations(context)...)
+	violations = append(violations, serviceSubjectViolations(snapshot)...)
+	violations = append(violations, appcmdTransportViolations(snapshot)...)
 	return violations
 }
 

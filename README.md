@@ -30,7 +30,11 @@ import (
 )
 
 func TestArchitecture(t *testing.T) {
-	tddcheck.Project{Root: "internal"}.Assert(t)
+	analyzer, err := tddcheck.New(tddcheck.Options{Root: "internal"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tddcheck.Assert(t, analyzer)
 }
 ```
 
@@ -49,7 +53,10 @@ tddcheck version  输出版本
 tddcheck index --root internal
 tddcheck index --root internal --format json
 tddcheck doc --root internal --output docs/tddcheck.index.gen.md
+tddcheck check --root internal --config tddcheck.json
 ```
+
+配置文件使用 `Config` 的 lowerCamel JSON 字段名。解析采用 `encoding/json/v2` 严格语义：重复字段、未知字段和无效 UTF-8 会直接失败。
 
 CLI 只接受完整长参数，例如 `--root`、`--format` 和 `--output`。直接运行 `tddcheck` 等同于检查默认的 `internal` 目录。
 
@@ -69,10 +76,12 @@ go run ./cmd/tddcheck check --root internal
 
 ## 文档
 
-- [Go 包文档](https://pkg.go.dev/github.com/lwmacct/260622-go-pkg-tddcheck/pkg/tddcheck)：`Project`、`Analysis`、配置和架构索引 API。
+- [Go 包文档](https://pkg.go.dev/github.com/lwmacct/260622-go-pkg-tddcheck/pkg/tddcheck)：`Analyzer`、`Analysis`、配置和架构索引 API。
 - [默认规则与配置](docs/default-rules.md)：默认分层、文件类型、内容规则、依赖方向和自定义示例。
 
-`Project.Analyze` 适合需要结构化违规和索引数据的集成；测试通常直接使用 `Project.Assert`。生成并提交架构索引文档时，可以使用 CLI 的 `doc` 命令或 `Project.WriteDoc`。
+`Analyzer.Analyze(ctx)` 返回带源码范围的结构化诊断和架构索引；测试可使用 `tddcheck.Assert`。生成并提交架构索引文档时，可以使用 CLI 的 `doc` 命令或 `Analysis.WriteMarkdown`。
+
+源码通过 Go package loader 加载，因此 build tags、平台文件、import alias 和 package graph 都按真实构建视图处理。`Config.IncludeTests` 可包含测试变体，`Config.StrictPackages` 可要求所有 package 完整通过类型检查。
 
 ## 开发
 

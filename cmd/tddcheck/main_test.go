@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -27,7 +28,7 @@ func DeviceSchema() {}
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	code := runWithArgs([]string{"index", "--root", filepath.Join(root, "internal")}, &stdout, &stderr)
+	code := runWithArgs(context.Background(), []string{"index", "--root", filepath.Join(root, "internal")}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d, stderr:\n%s", code, stderr.String())
 	}
@@ -55,12 +56,18 @@ func NewDeviceService() *DeviceService { return &DeviceService{} }
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	code := runWithArgs([]string{"index", "--root", filepath.Join(root, "internal"), "--format", "json"}, &stdout, &stderr)
+	code := runWithArgs(context.Background(), []string{"index", "--root", filepath.Join(root, "internal"), "--format", "json"}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d, stderr:\n%s", code, stderr.String())
 	}
 	if !strings.Contains(stdout.String(), `"modulePath": "example.com/app"`) {
 		t.Fatalf("expected json module path, got:\n%s", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), `"schemaVersion": "1"`) {
+		t.Fatalf("expected versioned json schema, got:\n%s", stdout.String())
+	}
+	if strings.Contains(stdout.String(), `"duration"`) {
+		t.Fatalf("expected deterministic json without duration, got:\n%s", stdout.String())
 	}
 	if strings.Contains(stdout.String(), `"apis"`) {
 		t.Fatalf("expected json index not to contain APIs, got:\n%s", stdout.String())
@@ -78,7 +85,7 @@ func NewDeviceService() *DeviceService { return &DeviceService{} }
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	code := runWithArgs([]string{"doc", "--root", filepath.Join(root, "internal"), "--output", output}, &stdout, &stderr)
+	code := runWithArgs(context.Background(), []string{"doc", "--root", filepath.Join(root, "internal"), "--output", output}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d, stderr:\n%s", code, stderr.String())
 	}
@@ -94,7 +101,7 @@ func NewDeviceService() *DeviceService { return &DeviceService{} }
 func TestRunWithArgsRejectsShortFlags(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	code := runWithArgs([]string{"index", "-root", "internal"}, &stdout, &stderr)
+	code := runWithArgs(context.Background(), []string{"index", "-root", "internal"}, &stdout, &stderr)
 	if code != 2 {
 		t.Fatalf("expected exit 2, got %d", code)
 	}
@@ -106,7 +113,7 @@ func TestRunWithArgsRejectsShortFlags(t *testing.T) {
 func TestRunWithArgsRejectsUnknownCommand(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	code := runWithArgs([]string{"unknown"}, &stdout, &stderr)
+	code := runWithArgs(context.Background(), []string{"unknown"}, &stdout, &stderr)
 	if code != 2 {
 		t.Fatalf("expected exit 2, got %d", code)
 	}
@@ -115,10 +122,31 @@ func TestRunWithArgsRejectsUnknownCommand(t *testing.T) {
 	}
 }
 
+func TestRunWithArgsRejectsUnknownConfigFields(t *testing.T) {
+	root := cliFixture(t, map[string]string{
+		"internal/service/device.service.go": `package service
+type DeviceService struct{}
+func NewDeviceService() *DeviceService { return &DeviceService{} }
+`,
+	})
+	configFile := filepath.Join(root, "tddcheck.json")
+	cliWriteFile(t, root, "tddcheck.json", `{"unknownField":true}`)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := runWithArgs(context.Background(), []string{"check", "--root", filepath.Join(root, "internal"), "--config", configFile}, &stdout, &stderr)
+	if code != 2 {
+		t.Fatalf("expected exit 2, got %d", code)
+	}
+	if !strings.Contains(stderr.String(), "unknownField") {
+		t.Fatalf("expected strict config error, got:\n%s", stderr.String())
+	}
+}
+
 func TestRunWithArgsPrintsUsage(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	code := runWithArgs([]string{"help"}, &stdout, &stderr)
+	code := runWithArgs(context.Background(), []string{"help"}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d", code)
 	}
@@ -133,7 +161,7 @@ func cliFixture(t *testing.T, files map[string]string) string {
 	t.Helper()
 
 	root := t.TempDir()
-	cliWriteFile(t, root, "go.mod", "module example.com/app\n\ngo 1.26.4\n")
+	cliWriteFile(t, root, "go.mod", "module example.com/app\n\ngo 1.27.0\n")
 	for name, content := range files {
 		cliWriteFile(t, root, name, content)
 	}

@@ -117,13 +117,13 @@ func checkSupport(context declContext) []Violation {
 }
 
 func checkService(context declContext) []Violation {
-	violations := servicePersistenceViolations(context.file.Fset, context.file.AbsPath, context.file.AST)
+	violations := servicePersistenceViolations(context.file)
 	violations = append(violations, serviceViolations(context.file.Fset, context.file.AbsPath, context.name, context.file.AST)...)
 	return violations
 }
 
 func checkStore(context declContext) []Violation {
-	return storeViolations(context.file.Fset, context.file.AbsPath, context.name, context.file.AST)
+	return storeViolations(context.file, context.name)
 }
 
 func checkSchema(context declContext) []Violation {

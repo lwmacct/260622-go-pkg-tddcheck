@@ -19,7 +19,7 @@ func handleMessage() {}
 `,
 	})
 
-	violations, err := New(filepath.Join(root, "internal"), rulekit.WithConfig(rulekit.Config{
+	violations, err := checkRoot(filepath.Join(root, "internal"), rulekit.Config{
 		LayerDirs: []string{"adapter"},
 		LayerFileNameModes: map[string]string{
 			"adapter": rulekit.FileNameModePackageKind,
@@ -30,7 +30,7 @@ func handleMessage() {}
 		ArchitectureScopes:   map[string][]string{},
 		EscapedScopeSuffixes: []string{},
 		LayerRules:           []rulekit.LayerDependencyRule{},
-	})).Violations()
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,7 +45,7 @@ func TestViolationsRejectsUnconfiguredPackageKindFile(t *testing.T) {
 `,
 	})
 
-	violations, err := New(filepath.Join(root, "internal"), rulekit.WithConfig(rulekit.Config{
+	violations, err := checkRoot(filepath.Join(root, "internal"), rulekit.Config{
 		LayerDirs: []string{"adapter"},
 		LayerFileNameModes: map[string]string{
 			"adapter": rulekit.FileNameModePackageKind,
@@ -56,7 +56,7 @@ func TestViolationsRejectsUnconfiguredPackageKindFile(t *testing.T) {
 		ArchitectureScopes:   map[string][]string{},
 		EscapedScopeSuffixes: []string{},
 		LayerRules:           []rulekit.LayerDependencyRule{},
-	})).Violations()
+	})
 	if err != nil {
 		t.Fatal(err)
 	}

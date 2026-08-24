@@ -8,7 +8,7 @@ import (
 	"github.com/lwmacct/260622-go-pkg-tddcheck/pkg/tddcheck/rulekit"
 )
 
-func serviceSubjectViolations(context *rulekit.Context) []Violation {
+func serviceSubjectViolations(context *rulekit.Snapshot) []Violation {
 	serviceLayer, ok := context.Profile.Layer("service")
 	if ok && serviceLayer.FileNameMode == rulekit.FileNameModePackageKind {
 		return nil
@@ -19,7 +19,7 @@ func serviceSubjectViolations(context *rulekit.Context) []Violation {
 	}
 	subjects := map[string]*subject{}
 	for _, file := range context.Files {
-		if rulekit.FreeFile(file.Base) {
+		if file.IsTest || rulekit.FreeFile(file.Base) {
 			continue
 		}
 		if file.Layer != "service" {

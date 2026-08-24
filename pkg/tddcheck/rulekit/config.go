@@ -1,31 +1,43 @@
 package rulekit
 
-import "slices"
+import (
+	"fmt"
+	"maps"
+	"slices"
+	"strings"
+)
 
 // Config defines the directories and conventions used by architecture rules.
 // Each nil slice or map is independently populated by [Config.WithDefaults].
 type Config struct {
+	// IncludeTests loads package test variants and *_test.go files.
+	IncludeTests bool `json:"includeTests,omitempty"`
+	// BuildFlags are forwarded to the Go package loader, for example -tags=integration.
+	BuildFlags []string `json:"buildFlags,omitempty"`
+	// StrictPackages turns package-list and type-checking errors into analysis errors.
+	StrictPackages bool `json:"strictPackages,omitempty"`
+
 	// LayerDirs lists directory names checked by file-layout rules.
-	LayerDirs []string
+	LayerDirs []string `json:"layerDirs,omitempty"`
 	// DependencyLayerDirs lists directory names recognized by dependency rules.
 	// A nil value inherits LayerDirs.
-	DependencyLayerDirs []string
+	DependencyLayerDirs []string `json:"dependencyLayerDirs,omitempty"`
 	// SkipDirs lists directory names excluded from source scanning.
-	SkipDirs []string
+	SkipDirs []string `json:"skipDirs,omitempty"`
 	// LayerRules lists forbidden import relationships.
-	LayerRules []LayerDependencyRule
+	LayerRules []LayerDependencyRule `json:"layerRules,omitempty"`
 
 	// LayerFileNameModes maps a layer to a FileNameMode constant.
-	LayerFileNameModes map[string]string
+	LayerFileNameModes map[string]string `json:"layerFileNameModes,omitempty"`
 	// LayerFileKinds maps a layer to its allowed filename kinds.
-	LayerFileKinds map[string][]string
+	LayerFileKinds map[string][]string `json:"layerFileKinds,omitempty"`
 	// ArchitectureScopes maps a layer to its allowed x_ scopes.
-	ArchitectureScopes map[string][]string
+	ArchitectureScopes map[string][]string `json:"architectureScopes,omitempty"`
 	// EscapedScopeSuffixes lists kinds and actions that business scopes must not
 	// encode as suffixes.
-	EscapedScopeSuffixes []string
+	EscapedScopeSuffixes []string `json:"escapedScopeSuffixes,omitempty"`
 	// ForbiddenWeakScopes lists ambiguous business scope names.
-	ForbiddenWeakScopes []string
+	ForbiddenWeakScopes []string `json:"forbiddenWeakScopes,omitempty"`
 }
 
 type Profile struct {
@@ -35,6 +47,12 @@ type Profile struct {
 	LayerRules           []LayerDependencyRule
 	EscapedScopeSuffixes []string
 	ForbiddenWeakScopes  []string
+
+	layersByName         map[string]LayerProfile
+	dependencyLayerSet   map[string]bool
+	allowedKindSet       map[string]map[string]bool
+	architectureScopeSet map[string]map[string]bool
+	reservedScopeNameSet map[string]bool
 }
 
 type LayerProfile struct {
@@ -45,27 +63,26 @@ type LayerProfile struct {
 }
 
 // LayerDependencyRule describes a forbidden import relationship. Source path
-// prefixes are relative to the analyzed root; target path prefixes are relative
-// to the module's internal directory.
+// and target prefixes are both relative to the analyzed root.
 type LayerDependencyRule struct {
 	// SourceLayer is the layer containing the importing file.
-	SourceLayer string
+	SourceLayer string `json:"sourceLayer"`
 	// SourceRelPrefix optionally restricts importing directories relative to the
 	// analyzed root.
-	SourceRelPrefix string
+	SourceRelPrefix string `json:"sourceRelPrefix,omitempty"`
 	// ExceptSourceRelPrefixes exempts importing directories relative to the
 	// analyzed root.
-	ExceptSourceRelPrefixes []string
+	ExceptSourceRelPrefixes []string `json:"exceptSourceRelPrefixes,omitempty"`
 	// TargetLayer is the layer containing the imported package.
-	TargetLayer string
+	TargetLayer string `json:"targetLayer"`
 	// TargetRelPrefix optionally restricts imported packages relative to the
-	// module's internal directory.
-	TargetRelPrefix string
-	// ExceptTargetRelPrefixes exempts imported packages relative to the module's
-	// internal directory.
-	ExceptTargetRelPrefixes []string
+	// analyzed root.
+	TargetRelPrefix string `json:"targetRelPrefix,omitempty"`
+	// ExceptTargetRelPrefixes exempts imported packages relative to the analyzed
+	// root.
+	ExceptTargetRelPrefixes []string `json:"exceptTargetRelPrefixes,omitempty"`
 	// Message overrides the default violation message when non-empty.
-	Message string
+	Message string `json:"message,omitempty"`
 }
 
 const (
@@ -159,20 +176,153 @@ func (c Config) WithDefaults() Config {
 	return c
 }
 
+// Compile applies defaults, validates cross-field references, and deep-clones
+// caller-owned collections so an analysis cannot observe later mutations.
+func (c Config) Compile() (Config, error) {
+	inheritedLayerRules := c.LayerRules == nil
+	c = c.WithDefaults()
+	if inheritedLayerRules {
+		layers := sliceSet(c.DependencyLayerDirs)
+		c.LayerRules = slices.DeleteFunc(c.LayerRules, func(rule LayerDependencyRule) bool {
+			return !layers[rule.SourceLayer] || !layers[rule.TargetLayer]
+		})
+	}
+	if err := c.Validate(); err != nil {
+		return Config{}, err
+	}
+	c.BuildFlags = slices.Clone(c.BuildFlags)
+	c.LayerDirs = slices.Clone(c.LayerDirs)
+	c.DependencyLayerDirs = slices.Clone(c.DependencyLayerDirs)
+	c.SkipDirs = slices.Clone(c.SkipDirs)
+	c.LayerRules = slices.Clone(c.LayerRules)
+	for index := range c.LayerRules {
+		c.LayerRules[index].ExceptSourceRelPrefixes = slices.Clone(c.LayerRules[index].ExceptSourceRelPrefixes)
+		c.LayerRules[index].ExceptTargetRelPrefixes = slices.Clone(c.LayerRules[index].ExceptTargetRelPrefixes)
+	}
+	c.LayerFileNameModes = maps.Clone(c.LayerFileNameModes)
+	c.LayerFileKinds = cloneStringSlices(c.LayerFileKinds)
+	c.ArchitectureScopes = cloneStringSlices(c.ArchitectureScopes)
+	c.EscapedScopeSuffixes = slices.Clone(c.EscapedScopeSuffixes)
+	c.ForbiddenWeakScopes = slices.Clone(c.ForbiddenWeakScopes)
+	return c, nil
+}
+
+func (c Config) Validate() error {
+	if err := validateNames("layer", c.LayerDirs); err != nil {
+		return err
+	}
+	if err := validateNames("dependency layer", c.DependencyLayerDirs); err != nil {
+		return err
+	}
+	if err := validateNames("skip directory", c.SkipDirs); err != nil {
+		return err
+	}
+	dependencyLayers := sliceSet(c.DependencyLayerDirs)
+	for _, layer := range c.LayerDirs {
+		mode := c.LayerFileNameModes[layer]
+		if mode != "" && mode != FileNameModeScopeKind && mode != FileNameModePackageKind {
+			return fmt.Errorf("layer %q has invalid filename mode %q", layer, mode)
+		}
+	}
+	for _, rule := range c.LayerRules {
+		if !dependencyLayers[rule.SourceLayer] {
+			return fmt.Errorf("dependency rule references unknown source layer %q", rule.SourceLayer)
+		}
+		if !dependencyLayers[rule.TargetLayer] {
+			return fmt.Errorf("dependency rule references unknown target layer %q", rule.TargetLayer)
+		}
+	}
+	return nil
+}
+
+// ValidateFileLayout checks the profile fields consumed by file-layout rules.
+// Dependency-only tools may intentionally omit these fields and use Validate.
+func (c Config) ValidateFileLayout() error {
+	layers := sliceSet(c.LayerDirs)
+	for _, layer := range c.LayerDirs {
+		mode := c.LayerFileNameModes[layer]
+		if mode != FileNameModeScopeKind && mode != FileNameModePackageKind {
+			return fmt.Errorf("layer %q has invalid filename mode %q", layer, mode)
+		}
+		if len(c.LayerFileKinds[layer]) == 0 {
+			return fmt.Errorf("layer %q has no allowed file kinds", layer)
+		}
+	}
+	for layer := range c.LayerFileNameModes {
+		if !layers[layer] {
+			return fmt.Errorf("filename mode references unknown layer %q", layer)
+		}
+	}
+	for layer := range c.LayerFileKinds {
+		if !layers[layer] {
+			return fmt.Errorf("file kinds reference unknown layer %q", layer)
+		}
+	}
+	for layer := range c.ArchitectureScopes {
+		if !layers[layer] {
+			return fmt.Errorf("architecture scopes reference unknown layer %q", layer)
+		}
+	}
+	return nil
+}
+
+func validateNames(label string, values []string) error {
+	seen := map[string]bool{}
+	for _, value := range values {
+		if value == "" || strings.Contains(value, "/") || strings.Contains(value, `\`) {
+			return fmt.Errorf("%s name %q must be a single non-empty path segment", label, value)
+		}
+		if seen[value] {
+			return fmt.Errorf("duplicate %s %q", label, value)
+		}
+		seen[value] = true
+	}
+	return nil
+}
+
+func sliceSet(values []string) map[string]bool {
+	result := make(map[string]bool, len(values))
+	for _, value := range values {
+		result[value] = true
+	}
+	return result
+}
+
+func cloneStringSlices(values map[string][]string) map[string][]string {
+	result := make(map[string][]string, len(values))
+	for key, value := range values {
+		result[key] = slices.Clone(value)
+	}
+	return result
+}
+
 func (c Config) Profile() Profile {
 	c = c.WithDefaults()
 	layers := make([]LayerProfile, 0, len(c.LayerDirs))
+	layersByName := make(map[string]LayerProfile, len(c.LayerDirs))
+	allowedKinds := make(map[string]map[string]bool, len(c.LayerDirs))
+	architectureScopes := make(map[string]map[string]bool, len(c.LayerDirs))
+	reservedScopes := map[string]bool{}
 	for _, layer := range c.LayerDirs {
 		mode := c.LayerFileNameModes[layer]
 		if mode == "" {
 			mode = FileNameModeScopeKind
 		}
-		layers = append(layers, LayerProfile{
+		layerProfile := LayerProfile{
 			Name:               layer,
 			FileNameMode:       mode,
 			FileKinds:          c.LayerFileKinds[layer],
 			ArchitectureScopes: c.ArchitectureScopes[layer],
-		})
+		}
+		layers = append(layers, layerProfile)
+		layersByName[layer] = layerProfile
+		allowedKinds[layer] = sliceSet(layerProfile.FileKinds)
+		architectureScopes[layer] = sliceSet(layerProfile.ArchitectureScopes)
+		for _, scope := range layerProfile.ArchitectureScopes {
+			if name, ok := strings.CutPrefix(scope, ArchitectureScopePrefix); ok {
+				reservedScopes[name] = true
+			}
+		}
 	}
 	return Profile{
 		Layers:               layers,
@@ -181,16 +331,17 @@ func (c Config) Profile() Profile {
 		LayerRules:           c.LayerRules,
 		EscapedScopeSuffixes: c.EscapedScopeSuffixes,
 		ForbiddenWeakScopes:  c.ForbiddenWeakScopes,
+		layersByName:         layersByName,
+		dependencyLayerSet:   sliceSet(c.DependencyLayerDirs),
+		allowedKindSet:       allowedKinds,
+		architectureScopeSet: architectureScopes,
+		reservedScopeNameSet: reservedScopes,
 	}
 }
 
 func (p Profile) Layer(name string) (LayerProfile, bool) {
-	for _, layer := range p.Layers {
-		if layer.Name == name {
-			return layer, true
-		}
-	}
-	return LayerProfile{}, false
+	layer, ok := p.layersByName[name]
+	return layer, ok
 }
 
 func (p Profile) LayerNames() []string {
@@ -202,26 +353,19 @@ func (p Profile) LayerNames() []string {
 }
 
 func (p Profile) DependencyLayer(name string) bool {
-	return StringIn(name, p.DependencyLayers)
+	return p.dependencyLayerSet[name]
 }
 
 func (p Profile) KindAllowed(layerName string, kind string) bool {
-	layer, ok := p.Layer(layerName)
-	return ok && StringIn(kind, layer.FileKinds)
+	return p.allowedKindSet[layerName][kind]
 }
 
 func (p Profile) ArchitectureScopeAllowed(layerName string, scope string) bool {
-	layer, ok := p.Layer(layerName)
-	return ok && StringIn(scope, layer.ArchitectureScopes)
+	return p.architectureScopeSet[layerName][scope]
 }
 
 func (p Profile) ArchitectureScopeReserved(scope string) bool {
-	for _, layer := range p.Layers {
-		if StringIn(ArchitectureScopePrefix+scope, layer.ArchitectureScopes) {
-			return true
-		}
-	}
-	return false
+	return p.reservedScopeNameSet[scope]
 }
 
 func StringIn(value string, values []string) bool {

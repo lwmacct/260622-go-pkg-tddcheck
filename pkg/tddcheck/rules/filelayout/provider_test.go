@@ -20,7 +20,7 @@ func (p *ImageCaptchaProvider) Create(context.Context) error { return nil }
 `,
 	})
 
-	violations, err := New(filepath.Join(root, "internal")).Violations()
+	violations, err := checkRoot(filepath.Join(root, "internal"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -37,7 +37,7 @@ func NewImageCaptchaProvider() *ImageCaptchaProvider { return &ImageCaptchaProvi
 `,
 	})
 
-	violations, err := New(filepath.Join(root, "internal")).Violations()
+	violations, err := checkRoot(filepath.Join(root, "internal"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,7 +60,7 @@ func BuildProvider() {}
 `,
 	})
 
-	violations, err := New(filepath.Join(root, "internal")).Violations()
+	violations, err := checkRoot(filepath.Join(root, "internal"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +84,7 @@ func (s *CaptchaService) Name() string { return "bad" }
 `,
 	})
 
-	violations, err := New(filepath.Join(root, "internal")).Violations()
+	violations, err := checkRoot(filepath.Join(root, "internal"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,7 +99,7 @@ func NewImageCaptchaProvider() string { return "" }
 `,
 	})
 
-	violations, err := New(filepath.Join(root, "internal")).Violations()
+	violations, err := checkRoot(filepath.Join(root, "internal"))
 	if err != nil {
 		t.Fatal(err)
 	}

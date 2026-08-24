@@ -1,6 +1,7 @@
 package tddcheck
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -30,7 +31,7 @@ func NewStore() *Store { return &Store{} }
 `,
 	})
 
-	analysis, err := Project{Root: filepath.Join(root, "internal")}.Analyze()
+	analysis, err := analyzeRoot(filepath.Join(root, "internal"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,7 +78,7 @@ func NewStore() *Store { return &Store{} }
 `,
 	})
 
-	analysis, err := Project{Root: filepath.Join(root, "internal")}.Analyze()
+	analysis, err := analyzeRoot(filepath.Join(root, "internal"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,7 +94,7 @@ import _ "example.com/app/internal/repository"
 `,
 	})
 
-	analysis, err := Project{Root: filepath.Join(root, "internal")}.Analyze()
+	analysis, err := analyzeRoot(filepath.Join(root, "internal"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,23 +120,20 @@ import _ "example.com/app/internal/adapter/wsworkspace"
 `,
 	})
 
-	analysis, err := Project{
-		Root: filepath.Join(root, "internal"),
-		Config: Config{
-			LayerDirs:           []string{"adapter"},
-			DependencyLayerDirs: []string{"adapter", "runtime", "service"},
-			LayerFileNameModes: map[string]string{
-				"adapter": FileNameModePackageKind,
-			},
-			LayerFileKinds: map[string][]string{
-				"adapter": {"endpoint"},
-			},
-			ArchitectureScopes: map[string][]string{},
-			LayerRules: []LayerDependencyRule{
-				{SourceLayer: "runtime", TargetLayer: "adapter", Message: "runtime must not import adapter"},
-			},
+	analysis, err := analyzeRoot(filepath.Join(root, "internal"), Config{
+		LayerDirs:           []string{"adapter"},
+		DependencyLayerDirs: []string{"adapter", "runtime", "service"},
+		LayerFileNameModes: map[string]string{
+			"adapter": FileNameModePackageKind,
 		},
-	}.Analyze()
+		LayerFileKinds: map[string][]string{
+			"adapter": {"endpoint"},
+		},
+		ArchitectureScopes: map[string][]string{},
+		LayerRules: []LayerDependencyRule{
+			{SourceLayer: "runtime", TargetLayer: "adapter", Message: "runtime must not import adapter"},
+		},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -151,15 +149,60 @@ import _ "example.com/app/internal/adapter/wsworkspace"
 	}
 }
 
+func TestAnalyzerRegistersTypedCustomRules(t *testing.T) {
+	root := fixture(t, map[string]string{
+		"internal/service/device.service.go": `package service
+type DeviceService struct{}
+func NewDeviceService() *DeviceService { return &DeviceService{} }
+`,
+	})
+	analyzer, err := New(Options{Root: filepath.Join(root, "internal")}, func(engine *Engine) {
+		engine.Register("custom-file", FileScope, func(_ context.Context, _ *Snapshot, file GoFile) ([]Diagnostic, error) {
+			position := Position{File: file.RelPath, Line: 1}
+			return []Diagnostic{{
+				RuleID:   "custom-file",
+				Severity: SeverityWarning,
+				Message:  "custom rule ran",
+				Range:    Range{Start: position, End: position},
+			}}, nil
+		})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	analysis, err := analyzer.Analyze(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !analysis.Passed() {
+		t.Fatal("warning diagnostics must not fail the analysis")
+	}
+	if len(analysis.Diagnostics) != 1 || analysis.Diagnostics[0].RuleID != "custom-file" {
+		t.Fatalf("custom rule did not run: %#v", analysis.Diagnostics)
+	}
+}
+
 func fixture(t *testing.T, files map[string]string) string {
 	t.Helper()
 
 	root := t.TempDir()
-	writeFile(t, root, "go.mod", "module example.com/app\n\ngo 1.26.4\n")
+	writeFile(t, root, "go.mod", "module example.com/app\n\ngo 1.27.0\n")
 	for name, content := range files {
 		writeFile(t, root, name, content)
 	}
 	return root
+}
+
+func analyzeRoot(root string, configs ...Config) (Analysis, error) {
+	var config Config
+	if len(configs) > 0 {
+		config = configs[0]
+	}
+	analyzer, err := New(Options{Root: root, Config: config})
+	if err != nil {
+		return Analysis{}, err
+	}
+	return analyzer.Analyze(context.Background())
 }
 
 func writeFile(t *testing.T, root string, name string, content string) {

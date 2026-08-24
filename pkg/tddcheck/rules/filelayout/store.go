@@ -4,35 +4,37 @@ import (
 	"go/ast"
 	"go/token"
 	"strings"
+
+	"github.com/lwmacct/260622-go-pkg-tddcheck/pkg/tddcheck/rulekit"
 )
 
-func storeViolations(fileSet *token.FileSet, filename string, name fileName, parsedFile *ast.File) []Violation {
+func storeViolations(file rulekit.GoFile, name fileName) []Violation {
 	var violations []Violation
 	expectedSubjectPrefix := upperCamelName(name.scope)
-	for _, decl := range parsedFile.Decls {
+	for _, decl := range file.AST.Decls {
 		switch typed := decl.(type) {
 		case *ast.GenDecl:
 			if typed.Tok == token.IMPORT {
 				continue
 			}
-			violations = append(violations, violationAt(fileSet, filename, typed.Pos(), "store files must only declare Store receiver methods"))
+			violations = append(violations, violationAt(file.Fset, file.AbsPath, typed.Pos(), "store files must only declare Store receiver methods"))
 		case *ast.FuncDecl:
 			if receiverTypeName(typed.Recv) != "Store" {
-				violations = append(violations, violationAt(fileSet, filename, typed.Pos(), "store files must only declare Store receiver methods"))
+				violations = append(violations, violationAt(file.Fset, file.AbsPath, typed.Pos(), "store files must only declare Store receiver methods"))
 				continue
 			}
 			if message := storeMethodNameViolation(typed, expectedSubjectPrefix); message != "" {
-				violations = append(violations, violationAt(fileSet, filename, typed.Pos(), message))
+				violations = append(violations, violationAt(file.Fset, file.AbsPath, typed.Pos(), message))
 			}
-			if !firstParamIsContext(typed) {
-				violations = append(violations, violationAt(fileSet, filename, typed.Pos(), "store methods must accept context.Context as the first parameter"))
+			if !firstParamIsContext(file, typed) {
+				violations = append(violations, violationAt(file.Fset, file.AbsPath, typed.Pos(), "store methods must accept context.Context as the first parameter"))
 			}
-			if !lastResultIsError(typed) {
-				violations = append(violations, violationAt(fileSet, filename, typed.Pos(), "store methods must return error as the last result"))
+			if !lastResultIsError(file, typed) {
+				violations = append(violations, violationAt(file.Fset, file.AbsPath, typed.Pos(), "store methods must return error as the last result"))
 			}
 			if typed.Name.IsExported() {
 				if message := storeMethodResultViolation(typed); message != "" {
-					violations = append(violations, violationAt(fileSet, filename, typed.Pos(), message))
+					violations = append(violations, violationAt(file.Fset, file.AbsPath, typed.Pos(), message))
 				}
 			}
 		}

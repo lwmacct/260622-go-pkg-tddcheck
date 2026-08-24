@@ -231,31 +231,31 @@ func fieldOptions(field FieldIndex) string {
 	return "[" + strings.Join(options, ", ") + "]"
 }
 
-func indexFromContext(context *rulekit.Context) Index {
+func indexFromSnapshot(snapshot *rulekit.Snapshot) Index {
 	result := Index{
-		Root:        context.DisplayPath(context.Root),
-		ModulePath:  context.ModulePath,
-		projectRoot: context.ProjectRoot(),
+		Root:        snapshot.DisplayPath(snapshot.Root),
+		ModulePath:  snapshot.ModulePath,
+		projectRoot: snapshot.ProjectRoot,
 	}
-	for _, file := range context.Files {
-		if rulekit.FreeFile(file.Base) {
+	for _, file := range snapshot.Files {
+		if file.IsTest || rulekit.FreeFile(file.Base) {
 			continue
 		}
 		switch file.Layer {
 		case "handler":
 			if strings.HasSuffix(file.Base, ".handler.go") {
-				result.Handlers = append(result.Handlers, handlerIndexesFromFile(context, file)...)
+				result.Handlers = append(result.Handlers, handlerIndexesFromFile(snapshot, file)...)
 			}
 		case "service":
 			if strings.HasSuffix(file.Base, ".service.go") {
-				result.Services = append(result.Services, serviceIndexesFromFile(context, file)...)
+				result.Services = append(result.Services, serviceIndexesFromFile(snapshot, file)...)
 			}
 		case "repository":
 			if strings.HasSuffix(file.Base, ".store.go") {
-				result.Stores = append(result.Stores, storeIndexesFromFile(context, file)...)
+				result.Stores = append(result.Stores, storeIndexesFromFile(snapshot, file)...)
 			}
 			if strings.HasSuffix(file.Base, ".schema.go") {
-				tables, projections := schemaIndexesFromFile(context, file)
+				tables, projections := schemaIndexesFromFile(snapshot, file)
 				result.Tables = append(result.Tables, tables...)
 				result.Projections = append(result.Projections, projections...)
 			}

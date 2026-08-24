@@ -4,7 +4,7 @@
 
 ## 执行模型
 
-检查流程解析项目根目录和 `go.mod` module path，然后扫描一次目标目录下的 Go 文件，缓存文件路径、所属层、AST 和 imports。默认执行两组规则：
+检查流程通过 `go/packages` 加载目标 module subtree，共享同一个 `token.FileSet`，并缓存 package graph、AST、`types.Info`、imports 和所属层。默认执行两组规则：
 
 ```text
 filelayout  文件命名、文件类型、声明内容和部分跨文件约束
@@ -14,11 +14,15 @@ layerdeps   分层 import 依赖约束
 以下文件和目录会被特殊处理：
 
 ```text
-*_test.go   不参与扫描
+*_test.go   默认不加载；IncludeTests=true 时可供依赖和自定义规则检查
 x_free.go   不参与规则检查和架构索引
 隐藏目录    不参与扫描
 vendor/node_modules/dist/build  默认不参与扫描
 ```
+
+Go build constraints、`Config.BuildFlags` 和当前 GOOS/GOARCH 会决定实际文件集合。默认允许 package/type error 并尽力分析；`Config.StrictPackages=true` 会将其视为操作错误。
+
+CLI 可通过 `--config tddcheck.json` 读取配置。JSON 使用 lowerCamel 字段名并拒绝重复或未知字段。
 
 ## 默认分层
 

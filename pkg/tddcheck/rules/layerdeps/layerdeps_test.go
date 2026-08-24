@@ -1,6 +1,7 @@
 package layerdeps
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -8,6 +9,14 @@ import (
 
 	"github.com/lwmacct/260622-go-pkg-tddcheck/pkg/tddcheck/rulekit"
 )
+
+func checkRoot(root string, configs ...rulekit.Config) ([]Violation, error) {
+	var config rulekit.Config
+	if len(configs) > 0 {
+		config = configs[0]
+	}
+	return Check(context.Background(), root, config)
+}
 
 func TestViolationsRejectsForbiddenHSRImports(t *testing.T) {
 	root := fixture(t, map[string]string{
@@ -22,7 +31,7 @@ import _ "example.com/app/internal/service"
 `,
 	})
 
-	violations, err := New(filepath.Join(root, "internal")).Violations()
+	violations, err := checkRoot(filepath.Join(root, "internal"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,7 +52,7 @@ import _ "example.com/app/internal/service"
 `,
 	})
 
-	violations, err := New(filepath.Join(root, "internal")).Violations()
+	violations, err := checkRoot(filepath.Join(root, "internal"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,7 +71,7 @@ import _ "example.com/app/internal/repository"
 `,
 	})
 
-	violations, err := New(filepath.Join(root, "internal")).Violations()
+	violations, err := checkRoot(filepath.Join(root, "internal"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,7 +91,7 @@ import _ "example.com/app/internal/adapter/wsworkspace"
 `,
 	})
 
-	violations, err := New(filepath.Join(root, "internal"), rulekit.WithConfig(rulekit.Config{
+	violations, err := checkRoot(filepath.Join(root, "internal"), rulekit.Config{
 		LayerDirs: []string{"adapter"},
 		LayerRules: []rulekit.LayerDependencyRule{
 			{
@@ -92,7 +101,7 @@ import _ "example.com/app/internal/adapter/wsworkspace"
 				Message:                 "adapter must not import adapter",
 			},
 		},
-	})).Violations()
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,7 +121,7 @@ import _ "example.com/app/internal/runtime/nodepool"
 `,
 	})
 
-	violations, err := New(filepath.Join(root, "internal"), rulekit.WithConfig(rulekit.Config{
+	violations, err := checkRoot(filepath.Join(root, "internal"), rulekit.Config{
 		LayerDirs:           []string{"adapter"},
 		DependencyLayerDirs: []string{"adapter", "runtime"},
 		LayerRules: []rulekit.LayerDependencyRule{
@@ -122,7 +131,7 @@ import _ "example.com/app/internal/runtime/nodepool"
 				Message:     "runtime must not import adapter",
 			},
 		},
-	})).Violations()
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -148,7 +157,7 @@ import _ "example.com/app/internal/adapter/wsnodetunnel"
 `,
 	})
 
-	violations, err := New(filepath.Join(root, "internal"), rulekit.WithConfig(rulekit.Config{
+	violations, err := checkRoot(filepath.Join(root, "internal"), rulekit.Config{
 		LayerDirs: []string{"adapter"},
 		LayerRules: []rulekit.LayerDependencyRule{
 			{
@@ -170,7 +179,7 @@ import _ "example.com/app/internal/adapter/wsnodetunnel"
 				Message: "adapter must not import adapter",
 			},
 		},
-	})).Violations()
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -185,7 +194,7 @@ func fixture(t *testing.T, files map[string]string) string {
 	t.Helper()
 
 	root := t.TempDir()
-	writeFile(t, root, "go.mod", "module example.com/app\n\ngo 1.26.4\n")
+	writeFile(t, root, "go.mod", "module example.com/app\n\ngo 1.27.0\n")
 	for name, content := range files {
 		writeFile(t, root, name, content)
 	}

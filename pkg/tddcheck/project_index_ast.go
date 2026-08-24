@@ -12,7 +12,7 @@ import (
 	"github.com/lwmacct/260622-go-pkg-tddcheck/pkg/tddcheck/rulekit"
 )
 
-func handlerIndexesFromFile(context *rulekit.Context, file rulekit.GoFile) []HandlerIndex {
+func handlerIndexesFromFile(context *rulekit.Snapshot, file rulekit.GoFile) []HandlerIndex {
 	handlers := map[string]*HandlerIndex{}
 	var registerNames []string
 	for _, decl := range file.AST.Decls {
@@ -76,7 +76,7 @@ func literalString(expr ast.Expr) string {
 	return value
 }
 
-func ensureHandlerIndex(handlers map[string]*HandlerIndex, context *rulekit.Context, file rulekit.GoFile, name string) *HandlerIndex {
+func ensureHandlerIndex(handlers map[string]*HandlerIndex, context *rulekit.Snapshot, file rulekit.GoFile, name string) *HandlerIndex {
 	handler := handlers[name]
 	if handler == nil {
 		handler = &HandlerIndex{
@@ -89,7 +89,7 @@ func ensureHandlerIndex(handlers map[string]*HandlerIndex, context *rulekit.Cont
 	return handler
 }
 
-func serviceIndexesFromFile(context *rulekit.Context, file rulekit.GoFile) []ServiceIndex {
+func serviceIndexesFromFile(context *rulekit.Snapshot, file rulekit.GoFile) []ServiceIndex {
 	services := map[string]*ServiceIndex{}
 	for _, decl := range file.AST.Decls {
 		switch typed := decl.(type) {
@@ -142,7 +142,7 @@ func serviceIndexesFromFile(context *rulekit.Context, file rulekit.GoFile) []Ser
 	return result
 }
 
-func ensureServiceIndex(services map[string]*ServiceIndex, context *rulekit.Context, file rulekit.GoFile, name string) *ServiceIndex {
+func ensureServiceIndex(services map[string]*ServiceIndex, context *rulekit.Snapshot, file rulekit.GoFile, name string) *ServiceIndex {
 	service := services[name]
 	if service == nil {
 		service = &ServiceIndex{
@@ -175,7 +175,7 @@ func serviceDependencies(typeSpec *ast.TypeSpec) []string {
 	return values
 }
 
-func storeIndexesFromFile(context *rulekit.Context, file rulekit.GoFile) []StoreIndex {
+func storeIndexesFromFile(context *rulekit.Snapshot, file rulekit.GoFile) []StoreIndex {
 	store := StoreIndex{
 		Scope: scopeFromFilename(file.Base),
 		File:  context.DisplayPath(file.AbsPath),
@@ -197,7 +197,7 @@ func storeIndexesFromFile(context *rulekit.Context, file rulekit.GoFile) []Store
 	return []StoreIndex{store}
 }
 
-func schemaIndexesFromFile(context *rulekit.Context, file rulekit.GoFile) ([]TableIndex, []ProjectionIndex) {
+func schemaIndexesFromFile(context *rulekit.Snapshot, file rulekit.GoFile) ([]TableIndex, []ProjectionIndex) {
 	var tables []TableIndex
 	var projections []ProjectionIndex
 	foreignKeys := foreignKeysByModelFromFile(file)

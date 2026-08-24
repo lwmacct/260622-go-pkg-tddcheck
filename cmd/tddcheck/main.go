@@ -1,13 +1,17 @@
 package main
 
 import (
-	"encoding/json"
+	"context"
+	"encoding/json/jsontext"
+	json "encoding/json/v2"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 
 	"github.com/lwmacct/260622-go-pkg-tddcheck/pkg/tddcheck"
 )
@@ -15,24 +19,26 @@ import (
 var version = "dev"
 
 func main() {
-	os.Exit(run())
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	os.Exit(run(ctx))
 }
 
-func run() int {
-	return runWithArgs(os.Args[1:], os.Stdout, os.Stderr)
+func run(ctx context.Context) int {
+	return runWithArgs(ctx, os.Args[1:], os.Stdout, os.Stderr)
 }
 
-func runWithArgs(args []string, stdout io.Writer, stderr io.Writer) int {
+func runWithArgs(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer) int {
 	if len(args) == 0 {
-		return runCheck(nil, stdout, stderr)
+		return runCheck(ctx, nil, stdout, stderr)
 	}
 	switch args[0] {
 	case "check":
-		return runCheck(args[1:], stdout, stderr)
+		return runCheck(ctx, args[1:], stdout, stderr)
 	case "index":
-		return runIndex(args[1:], stdout, stderr)
+		return runIndex(ctx, args[1:], stdout, stderr)
 	case "doc":
-		return runDoc(args[1:], stdout, stderr)
+		return runDoc(ctx, args[1:], stdout, stderr)
 	case "version":
 		_, _ = fmt.Fprintln(stdout, version)
 		return 0
@@ -41,7 +47,7 @@ func runWithArgs(args []string, stdout io.Writer, stderr io.Writer) int {
 		return 0
 	default:
 		if strings.HasPrefix(args[0], "-") {
-			return runCheck(args, stdout, stderr)
+			return runCheck(ctx, args, stdout, stderr)
 		}
 		_, _ = fmt.Fprintln(stderr, "tddcheck: unknown command "+args[0])
 		writeUsage(stderr)
@@ -49,13 +55,13 @@ func runWithArgs(args []string, stdout io.Writer, stderr io.Writer) int {
 	}
 }
 
-func runCheck(args []string, stdout io.Writer, stderr io.Writer) int {
+func runCheck(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer) int {
 	flags := newFlagSet("check", stderr)
-	root := flags.String("root", "internal", "project root or module subtree to check")
+	options := newAnalysisFlags(flags)
 	if code := parseFlags(flags, args, stderr); code != 0 {
 		return code
 	}
-	analysis, err := (tddcheck.Project{Root: *root}).Analyze()
+	analysis, err := analyze(ctx, options)
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, "tddcheck: "+err.Error())
 		return 2
@@ -67,28 +73,27 @@ func runCheck(args []string, stdout io.Writer, stderr io.Writer) int {
 	return 0
 }
 
-func runIndex(args []string, stdout io.Writer, stderr io.Writer) int {
+func runIndex(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer) int {
 	flags := newFlagSet("index", stderr)
-	root := flags.String("root", "internal", "project root or module subtree to check")
+	options := newAnalysisFlags(flags)
 	format := flags.String("format", "text", "output format: text or json")
 	if code := parseFlags(flags, args, stderr); code != 0 {
 		return code
 	}
-	analysis, err := (tddcheck.Project{Root: *root}).Analyze()
+	analysis, err := analyze(ctx, options)
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, "tddcheck: "+err.Error())
 		return 2
 	}
 	switch *format {
 	case "text":
-		_, _ = fmt.Fprintln(stdout, analysis.ProjectIndex().Text())
+		_, _ = fmt.Fprintln(stdout, analysis.ArchitectureIndex().Text())
 	case "json":
-		encoder := json.NewEncoder(stdout)
-		encoder.SetIndent("", "  ")
-		if err := encoder.Encode(analysis); err != nil {
+		if err := json.MarshalWrite(stdout, analysis, jsontext.WithIndent("  ")); err != nil {
 			_, _ = fmt.Fprintln(stderr, "tddcheck: "+err.Error())
 			return 2
 		}
+		_, _ = fmt.Fprintln(stdout)
 	default:
 		_, _ = fmt.Fprintln(stderr, "tddcheck: unsupported index format "+*format)
 		return 2
@@ -96,14 +101,14 @@ func runIndex(args []string, stdout io.Writer, stderr io.Writer) int {
 	return 0
 }
 
-func runDoc(args []string, stdout io.Writer, stderr io.Writer) int {
+func runDoc(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer) int {
 	flags := newFlagSet("doc", stderr)
-	root := flags.String("root", "internal", "project root or module subtree to check")
+	options := newAnalysisFlags(flags)
 	output := flags.String("output", tddcheck.DefaultDocFile, "markdown output file")
 	if code := parseFlags(flags, args, stderr); code != 0 {
 		return code
 	}
-	analysis, err := (tddcheck.Project{Root: *root}).Analyze()
+	analysis, err := analyze(ctx, options)
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, "tddcheck: "+err.Error())
 		return 2
@@ -114,6 +119,46 @@ func runDoc(args []string, stdout io.Writer, stderr io.Writer) int {
 	}
 	_, _ = fmt.Fprintln(stdout, "tddcheck: wrote "+*output)
 	return 0
+}
+
+type analysisFlags struct {
+	root       *string
+	configFile *string
+}
+
+func newAnalysisFlags(flags *flag.FlagSet) analysisFlags {
+	return analysisFlags{
+		root:       flags.String("root", "internal", "project root or module subtree to check"),
+		configFile: flags.String("config", "", "JSON configuration file"),
+	}
+}
+
+func analyze(ctx context.Context, options analysisFlags) (tddcheck.Analysis, error) {
+	config, err := readConfig(*options.configFile)
+	if err != nil {
+		return tddcheck.Analysis{}, err
+	}
+	analyzer, err := tddcheck.New(tddcheck.Options{Root: *options.root, Config: config})
+	if err != nil {
+		return tddcheck.Analysis{}, err
+	}
+	return analyzer.Analyze(ctx)
+}
+
+func readConfig(filename string) (tddcheck.Config, error) {
+	if filename == "" {
+		return tddcheck.Config{}, nil
+	}
+	file, err := os.Open(filename)
+	if err != nil {
+		return tddcheck.Config{}, err
+	}
+	defer file.Close()
+	var config tddcheck.Config
+	if err := json.UnmarshalRead(file, &config, json.RejectUnknownMembers(true)); err != nil {
+		return tddcheck.Config{}, fmt.Errorf("decode config %s: %w", filename, err)
+	}
+	return config, nil
 }
 
 func newFlagSet(name string, stderr io.Writer) *flag.FlagSet {

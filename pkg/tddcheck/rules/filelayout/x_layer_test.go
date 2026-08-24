@@ -5,9 +5,9 @@ import (
 	"testing"
 )
 
-func TestViolationsRejectsArchitectureScopeInWrongLayer(t *testing.T) {
+func TestViolationsRejectsArchitectureNamespaceInWrongLayer(t *testing.T) {
 	root := fixture(t, map[string]string{
-		"internal/service/x_store.support.go": `package service
+		"internal/service/x.store.support.go": `package service
 type StoreConfig struct{}
 `,
 	})
@@ -16,10 +16,10 @@ type StoreConfig struct{}
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertViolationContains(t, violations, `architecture scope "x_store" is not allowed in service`)
+	assertViolationContains(t, violations, `architecture namespace "store" is not allowed in service`)
 }
 
-func TestViolationsRejectsRemovedFileTypes(t *testing.T) {
+func TestViolationsRejectsRemovedFileKinds(t *testing.T) {
 	root := fixture(t, map[string]string{
 		"internal/service/device.models.go": `package service
 type Device struct{}
@@ -66,17 +66,17 @@ func utilDevice() {}
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertViolationContains(t, violations, `service file type "models" is not allowed`)
-	assertViolationContains(t, violations, `service file type "writes" is not allowed`)
-	assertViolationContains(t, violations, `repository file type "database" is not allowed`)
-	assertViolationContains(t, violations, `repository file type "models" is not allowed`)
-	assertViolationContains(t, violations, `service file type "model" is not allowed`)
-	assertViolationContains(t, violations, `service file type "constants" is not allowed`)
-	assertViolationContains(t, violations, `service file type "errors" is not allowed`)
-	assertViolationContains(t, violations, `service file type "utils" is not allowed`)
-	assertViolationContains(t, violations, `service file type "validation" is not allowed`)
-	assertViolationContains(t, violations, `repository file type "model" is not allowed`)
-	assertViolationContains(t, violations, `repository file type "constants" is not allowed`)
-	assertViolationContains(t, violations, `repository file type "errors" is not allowed`)
-	assertViolationContains(t, violations, `repository file type "utils" is not allowed`)
+	assertViolationContains(t, violations, `service file kind "models" is not allowed`)
+	assertViolationContains(t, violations, `service file kind "writes" is not allowed`)
+	assertViolationContains(t, violations, `repository file kind "database" is not allowed`)
+	assertViolationContains(t, violations, `repository file kind "models" is not allowed`)
+	assertViolationContains(t, violations, `service file kind "model" is not allowed`)
+	assertViolationContains(t, violations, `service file kind "constants" is not allowed`)
+	assertViolationContains(t, violations, `service file kind "errors" is not allowed`)
+	assertViolationContains(t, violations, `service file kind "utils" is not allowed`)
+	assertViolationContains(t, violations, `service file kind "validation" is not allowed`)
+	assertViolationContains(t, violations, `repository file kind "model" is not allowed`)
+	assertViolationContains(t, violations, `repository file kind "constants" is not allowed`)
+	assertViolationContains(t, violations, `repository file kind "errors" is not allowed`)
+	assertViolationContains(t, violations, `repository file kind "utils" is not allowed`)
 }

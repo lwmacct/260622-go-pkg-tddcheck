@@ -12,7 +12,7 @@ type DeviceRepository struct{}
 func (r DeviceRepository) List() {}
 func OpenDeviceRepository() {}
 `,
-		"internal/repository/x_store.repository.go": `package repository
+		"internal/repository/x.store.repository.go": `package repository
 type Store struct{}
 type StoreConfig struct{}
 func BuildStore() {}
@@ -24,7 +24,7 @@ func (r Repository) List() {}
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertViolationContains(t, violations, "repository files must use x_store scope")
+	assertViolationContains(t, violations, "repository files must use x.store namespace")
 	assertViolationContains(t, violations, "repository files must declare Store struct")
 	assertViolationContains(t, violations, "repository files must declare NewStore")
 	assertViolationContains(t, violations, "repository files must only declare Store")
@@ -34,7 +34,7 @@ func (r Repository) List() {}
 
 func TestViolationsAcceptsStoreRepositoryRoot(t *testing.T) {
 	root := fixture(t, map[string]string{
-		"internal/repository/x_store.repository.go": `package repository
+		"internal/repository/x.store.repository.go": `package repository
 type Store struct{}
 func NewStore() *Store { return &Store{} }
 func (s *Store) RunInTx() {}

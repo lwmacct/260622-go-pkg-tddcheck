@@ -462,11 +462,14 @@ func exprTypeName(expr ast.Expr) string {
 
 func scopeFromFilename(base string) string {
 	name := strings.TrimSuffix(base, ".go")
-	scope, _, ok := strings.Cut(name, ".")
-	if !ok {
+	parts := strings.Split(name, ".")
+	if len(parts) < 2 {
 		return ""
 	}
-	return scope
+	if len(parts) >= 3 && parts[0] == "x" {
+		return strings.Join(parts[:2], ".")
+	}
+	return parts[0]
 }
 
 func slicesSortMethods(methods []MethodIndex) {

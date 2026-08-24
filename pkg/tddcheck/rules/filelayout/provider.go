@@ -8,7 +8,7 @@ import (
 
 func providerViolations(fileSet *token.FileSet, filename string, name fileName, parsedFile *ast.File) []Violation {
 	var violations []Violation
-	expectedProviderType := upperCamelName(name.scope) + "Provider"
+	expectedProviderType := upperCamelName(name.qualifier()) + "Provider"
 	providerTypeFound := false
 	for _, decl := range parsedFile.Decls {
 		switch typed := decl.(type) {

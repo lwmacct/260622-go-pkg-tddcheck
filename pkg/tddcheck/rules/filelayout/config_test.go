@@ -27,9 +27,9 @@ func handleMessage() {}
 		LayerFileKinds: map[string][]string{
 			"adapter": {"doc", "service", "service.handler"},
 		},
-		ArchitectureScopes:   map[string][]string{},
-		EscapedScopeSuffixes: []string{},
-		LayerRules:           []rulekit.LayerDependencyRule{},
+		ArchitectureNamespaces: map[string][]string{},
+		EscapedSubjectSuffixes: []string{},
+		LayerRules:             []rulekit.LayerDependencyRule{},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -53,12 +53,12 @@ func TestViolationsRejectsUnconfiguredPackageKindFile(t *testing.T) {
 		LayerFileKinds: map[string][]string{
 			"adapter": {"doc", "service"},
 		},
-		ArchitectureScopes:   map[string][]string{},
-		EscapedScopeSuffixes: []string{},
-		LayerRules:           []rulekit.LayerDependencyRule{},
+		ArchitectureNamespaces: map[string][]string{},
+		EscapedSubjectSuffixes: []string{},
+		LayerRules:             []rulekit.LayerDependencyRule{},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertViolationContains(t, violations, `adapter file type "random" is not allowed`)
+	assertViolationContains(t, violations, `adapter file kind "random" is not allowed`)
 }

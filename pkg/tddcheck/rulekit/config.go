@@ -31,35 +31,35 @@ type Config struct {
 	LayerFileNameModes map[string]string `json:"layerFileNameModes,omitempty"`
 	// LayerFileKinds maps a layer to its allowed filename kinds.
 	LayerFileKinds map[string][]string `json:"layerFileKinds,omitempty"`
-	// ArchitectureScopes maps a layer to its allowed x_ scopes.
-	ArchitectureScopes map[string][]string `json:"architectureScopes,omitempty"`
-	// EscapedScopeSuffixes lists kinds and actions that business scopes must not
+	// ArchitectureNamespaces maps a layer to its allowed architecture namespaces.
+	ArchitectureNamespaces map[string][]string `json:"architectureNamespaces,omitempty"`
+	// EscapedSubjectSuffixes lists kinds and actions that business subjects must not
 	// encode as suffixes.
-	EscapedScopeSuffixes []string `json:"escapedScopeSuffixes,omitempty"`
-	// ForbiddenWeakScopes lists ambiguous business scope names.
-	ForbiddenWeakScopes []string `json:"forbiddenWeakScopes,omitempty"`
+	EscapedSubjectSuffixes []string `json:"escapedSubjectSuffixes,omitempty"`
+	// ForbiddenWeakSubjects lists ambiguous business subject names.
+	ForbiddenWeakSubjects []string `json:"forbiddenWeakSubjects,omitempty"`
 }
 
 type Profile struct {
-	Layers               []LayerProfile
-	DependencyLayers     []string
-	SkipDirs             []string
-	LayerRules           []LayerDependencyRule
-	EscapedScopeSuffixes []string
-	ForbiddenWeakScopes  []string
+	Layers                 []LayerProfile
+	DependencyLayers       []string
+	SkipDirs               []string
+	LayerRules             []LayerDependencyRule
+	EscapedSubjectSuffixes []string
+	ForbiddenWeakSubjects  []string
 
-	layersByName         map[string]LayerProfile
-	dependencyLayerSet   map[string]bool
-	allowedKindSet       map[string]map[string]bool
-	architectureScopeSet map[string]map[string]bool
-	reservedScopeNameSet map[string]bool
+	layersByName             map[string]LayerProfile
+	dependencyLayerSet       map[string]bool
+	allowedKindSet           map[string]map[string]bool
+	architectureNamespaceSet map[string]map[string]bool
+	reservedNamespaceNameSet map[string]bool
 }
 
 type LayerProfile struct {
-	Name               string
-	FileNameMode       string
-	FileKinds          []string
-	ArchitectureScopes []string
+	Name                   string
+	FileNameMode           string
+	FileKinds              []string
+	ArchitectureNamespaces []string
 }
 
 // LayerDependencyRule describes a forbidden import relationship. Source path
@@ -86,9 +86,8 @@ type LayerDependencyRule struct {
 }
 
 const (
-	ArchitectureScopePrefix = "x_"
-	FileNameModeScopeKind   = "scope_kind"
-	FileNameModePackageKind = "package_kind"
+	FileNameModeQualifiedKind = "qualified_kind"
+	FileNameModePackageKind   = "package_kind"
 )
 
 func DefaultConfig() Config {
@@ -102,22 +101,22 @@ func DefaultConfig() Config {
 			{SourceLayer: "repository", TargetLayer: "service", Message: "repository must not import service"},
 		},
 		LayerFileNameModes: map[string]string{
-			"handler":    FileNameModeScopeKind,
-			"service":    FileNameModeScopeKind,
-			"repository": FileNameModeScopeKind,
+			"handler":    FileNameModeQualifiedKind,
+			"service":    FileNameModeQualifiedKind,
+			"repository": FileNameModeQualifiedKind,
 		},
 		// Keep shared/cross-layer entries before layer-specific entries.
 		LayerFileKinds: map[string][]string{
-			"handler":    {"support", "mapper", "context", "dto", "endpoint", "handler", "middleware", "utils"},
-			"service":    {"support", "mapper", "commands", "provider", "service"},
-			"repository": {"support", "repository", "schema", "store"},
+			"handler":    {"free", "support", "mapper", "context", "dto", "endpoint", "handler", "middleware", "utils"},
+			"service":    {"free", "support", "mapper", "commands", "provider", "service"},
+			"repository": {"free", "support", "repository", "schema", "store"},
 		},
-		ArchitectureScopes: map[string][]string{
-			"handler":    {"x_shared", "x_http"},
-			"service":    {"x_shared"},
-			"repository": {"x_shared", "x_store"},
+		ArchitectureNamespaces: map[string][]string{
+			"handler":    {"shared", "http"},
+			"service":    {"shared"},
+			"repository": {"shared", "store"},
 		},
-		EscapedScopeSuffixes: []string{
+		EscapedSubjectSuffixes: []string{
 			"support",
 			"mapper",
 			"service",
@@ -140,7 +139,7 @@ func DefaultConfig() Config {
 			"update",
 			"upsert",
 		},
-		ForbiddenWeakScopes: []string{"common", "default", "helper", "helpers", "misc", "util", "utils"},
+		ForbiddenWeakSubjects: []string{"common", "default", "helper", "helpers", "misc", "util", "utils"},
 	}
 }
 
@@ -164,14 +163,14 @@ func (c Config) WithDefaults() Config {
 	if c.LayerFileKinds == nil {
 		c.LayerFileKinds = defaults.LayerFileKinds
 	}
-	if c.ArchitectureScopes == nil {
-		c.ArchitectureScopes = defaults.ArchitectureScopes
+	if c.ArchitectureNamespaces == nil {
+		c.ArchitectureNamespaces = defaults.ArchitectureNamespaces
 	}
-	if c.EscapedScopeSuffixes == nil {
-		c.EscapedScopeSuffixes = defaults.EscapedScopeSuffixes
+	if c.EscapedSubjectSuffixes == nil {
+		c.EscapedSubjectSuffixes = defaults.EscapedSubjectSuffixes
 	}
-	if c.ForbiddenWeakScopes == nil {
-		c.ForbiddenWeakScopes = defaults.ForbiddenWeakScopes
+	if c.ForbiddenWeakSubjects == nil {
+		c.ForbiddenWeakSubjects = defaults.ForbiddenWeakSubjects
 	}
 	return c
 }
@@ -201,9 +200,9 @@ func (c Config) Compile() (Config, error) {
 	}
 	c.LayerFileNameModes = maps.Clone(c.LayerFileNameModes)
 	c.LayerFileKinds = cloneStringSlices(c.LayerFileKinds)
-	c.ArchitectureScopes = cloneStringSlices(c.ArchitectureScopes)
-	c.EscapedScopeSuffixes = slices.Clone(c.EscapedScopeSuffixes)
-	c.ForbiddenWeakScopes = slices.Clone(c.ForbiddenWeakScopes)
+	c.ArchitectureNamespaces = cloneStringSlices(c.ArchitectureNamespaces)
+	c.EscapedSubjectSuffixes = slices.Clone(c.EscapedSubjectSuffixes)
+	c.ForbiddenWeakSubjects = slices.Clone(c.ForbiddenWeakSubjects)
 	return c, nil
 }
 
@@ -220,7 +219,7 @@ func (c Config) Validate() error {
 	dependencyLayers := sliceSet(c.DependencyLayerDirs)
 	for _, layer := range c.LayerDirs {
 		mode := c.LayerFileNameModes[layer]
-		if mode != "" && mode != FileNameModeScopeKind && mode != FileNameModePackageKind {
+		if mode != "" && mode != FileNameModeQualifiedKind && mode != FileNameModePackageKind {
 			return fmt.Errorf("layer %q has invalid filename mode %q", layer, mode)
 		}
 	}
@@ -241,7 +240,7 @@ func (c Config) ValidateFileLayout() error {
 	layers := sliceSet(c.LayerDirs)
 	for _, layer := range c.LayerDirs {
 		mode := c.LayerFileNameModes[layer]
-		if mode != FileNameModeScopeKind && mode != FileNameModePackageKind {
+		if mode != FileNameModeQualifiedKind && mode != FileNameModePackageKind {
 			return fmt.Errorf("layer %q has invalid filename mode %q", layer, mode)
 		}
 		if len(c.LayerFileKinds[layer]) == 0 {
@@ -258,9 +257,27 @@ func (c Config) ValidateFileLayout() error {
 			return fmt.Errorf("file kinds reference unknown layer %q", layer)
 		}
 	}
-	for layer := range c.ArchitectureScopes {
+	for layer := range c.ArchitectureNamespaces {
 		if !layers[layer] {
-			return fmt.Errorf("architecture scopes reference unknown layer %q", layer)
+			return fmt.Errorf("architecture namespaces reference unknown layer %q", layer)
+		}
+		if err := validateFileComponents("architecture namespace", c.ArchitectureNamespaces[layer]); err != nil {
+			return fmt.Errorf("layer %q: %w", layer, err)
+		}
+	}
+	return nil
+}
+
+func validateFileComponents(label string, values []string) error {
+	if err := validateNames(label, values); err != nil {
+		return err
+	}
+	for _, value := range values {
+		if strings.Contains(value, ".") {
+			return fmt.Errorf("%s %q must be a single filename component", label, value)
+		}
+		if strings.HasPrefix(value, "x_") {
+			return fmt.Errorf("%s %q must omit the legacy x_ prefix", label, value)
 		}
 	}
 	return nil
@@ -301,41 +318,39 @@ func (c Config) Profile() Profile {
 	layers := make([]LayerProfile, 0, len(c.LayerDirs))
 	layersByName := make(map[string]LayerProfile, len(c.LayerDirs))
 	allowedKinds := make(map[string]map[string]bool, len(c.LayerDirs))
-	architectureScopes := make(map[string]map[string]bool, len(c.LayerDirs))
-	reservedScopes := map[string]bool{}
+	architectureNamespaces := make(map[string]map[string]bool, len(c.LayerDirs))
+	reservedNamespaces := map[string]bool{}
 	for _, layer := range c.LayerDirs {
 		mode := c.LayerFileNameModes[layer]
 		if mode == "" {
-			mode = FileNameModeScopeKind
+			mode = FileNameModeQualifiedKind
 		}
 		layerProfile := LayerProfile{
-			Name:               layer,
-			FileNameMode:       mode,
-			FileKinds:          c.LayerFileKinds[layer],
-			ArchitectureScopes: c.ArchitectureScopes[layer],
+			Name:                   layer,
+			FileNameMode:           mode,
+			FileKinds:              c.LayerFileKinds[layer],
+			ArchitectureNamespaces: c.ArchitectureNamespaces[layer],
 		}
 		layers = append(layers, layerProfile)
 		layersByName[layer] = layerProfile
 		allowedKinds[layer] = sliceSet(layerProfile.FileKinds)
-		architectureScopes[layer] = sliceSet(layerProfile.ArchitectureScopes)
-		for _, scope := range layerProfile.ArchitectureScopes {
-			if name, ok := strings.CutPrefix(scope, ArchitectureScopePrefix); ok {
-				reservedScopes[name] = true
-			}
+		architectureNamespaces[layer] = sliceSet(layerProfile.ArchitectureNamespaces)
+		for _, namespace := range layerProfile.ArchitectureNamespaces {
+			reservedNamespaces[namespace] = true
 		}
 	}
 	return Profile{
-		Layers:               layers,
-		DependencyLayers:     c.DependencyLayerDirs,
-		SkipDirs:             c.SkipDirs,
-		LayerRules:           c.LayerRules,
-		EscapedScopeSuffixes: c.EscapedScopeSuffixes,
-		ForbiddenWeakScopes:  c.ForbiddenWeakScopes,
-		layersByName:         layersByName,
-		dependencyLayerSet:   sliceSet(c.DependencyLayerDirs),
-		allowedKindSet:       allowedKinds,
-		architectureScopeSet: architectureScopes,
-		reservedScopeNameSet: reservedScopes,
+		Layers:                   layers,
+		DependencyLayers:         c.DependencyLayerDirs,
+		SkipDirs:                 c.SkipDirs,
+		LayerRules:               c.LayerRules,
+		EscapedSubjectSuffixes:   c.EscapedSubjectSuffixes,
+		ForbiddenWeakSubjects:    c.ForbiddenWeakSubjects,
+		layersByName:             layersByName,
+		dependencyLayerSet:       sliceSet(c.DependencyLayerDirs),
+		allowedKindSet:           allowedKinds,
+		architectureNamespaceSet: architectureNamespaces,
+		reservedNamespaceNameSet: reservedNamespaces,
 	}
 }
 
@@ -360,12 +375,12 @@ func (p Profile) KindAllowed(layerName string, kind string) bool {
 	return p.allowedKindSet[layerName][kind]
 }
 
-func (p Profile) ArchitectureScopeAllowed(layerName string, scope string) bool {
-	return p.architectureScopeSet[layerName][scope]
+func (p Profile) ArchitectureNamespaceAllowed(layerName string, namespace string) bool {
+	return p.architectureNamespaceSet[layerName][namespace]
 }
 
-func (p Profile) ArchitectureScopeReserved(scope string) bool {
-	return p.reservedScopeNameSet[scope]
+func (p Profile) ArchitectureNamespaceReserved(namespace string) bool {
+	return p.reservedNamespaceNameSet[namespace]
 }
 
 func StringIn(value string, values []string) bool {

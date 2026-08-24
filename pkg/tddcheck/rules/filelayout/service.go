@@ -14,15 +14,19 @@ func serviceViolations(fileSet *token.FileSet, filename string, name fileName, p
 	serviceName, serviceNameOK := serviceStructName(parsedFile)
 	expectedServiceName := serviceName
 	if expectedServiceName == "" {
-		expectedServiceName = upperCamelName(name.scope) + "Service"
+		expectedServiceName = upperCamelName(name.qualifier()) + "Service"
 	}
 	if serviceNameOK {
-		expectedScope := snakeName(strings.TrimSuffix(expectedServiceName, "Service"))
-		if name.scope != expectedScope {
+		expectedQualifier := snakeName(strings.TrimSuffix(expectedServiceName, "Service"))
+		if name.qualifier() != expectedQualifier {
+			qualifierName := "subject"
+			if name.namespace != "" {
+				qualifierName = "namespace"
+			}
 			violations = append(violations, Violation{
 				File:    rulekit.DisplayFilename(filename),
 				Line:    1,
-				Message: fmt.Sprintf("service file for %s must use scope %q", expectedServiceName, expectedScope),
+				Message: fmt.Sprintf("service file for %s must use %s %q", expectedServiceName, qualifierName, expectedQualifier),
 			})
 		}
 	}

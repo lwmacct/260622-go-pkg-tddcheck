@@ -3,7 +3,6 @@ package filelayout
 import (
 	"fmt"
 	"sort"
-	"strings"
 
 	"github.com/lwmacct/260622-go-pkg-tddcheck/pkg/tddcheck/rulekit"
 )
@@ -19,20 +18,20 @@ func serviceSubjectViolations(context *rulekit.Snapshot) []Violation {
 	}
 	subjects := map[string]*subject{}
 	for _, file := range context.Files {
-		if file.IsTest || rulekit.FreeFile(file.Base) {
+		if file.IsTest {
 			continue
 		}
 		if file.Layer != "service" {
 			continue
 		}
-		name, ok := parseFileName(file.Base, rulekit.FileNameModeScopeKind)
-		if !ok || strings.HasPrefix(name.scope, architectureScopePrefix) {
+		name, ok := parseFileName(file.Base, rulekit.FileNameModeQualifiedKind)
+		if !ok || name.namespace != "" || name.kind == "free" {
 			continue
 		}
-		item := subjects[name.scope]
+		item := subjects[name.subject]
 		if item == nil {
 			item = &subject{}
-			subjects[name.scope] = item
+			subjects[name.subject] = item
 		}
 		item.files = append(item.files, file)
 		if name.kind == "service" {
@@ -40,23 +39,23 @@ func serviceSubjectViolations(context *rulekit.Snapshot) []Violation {
 		}
 	}
 
-	var scopes []string
-	for scope, item := range subjects {
+	var subjectNames []string
+	for subjectName, item := range subjects {
 		if !item.hasService {
-			scopes = append(scopes, scope)
+			subjectNames = append(subjectNames, subjectName)
 		}
 	}
-	sort.Strings(scopes)
+	sort.Strings(subjectNames)
 	var violations []Violation
-	for _, scope := range scopes {
-		files := subjects[scope].files
+	for _, subjectName := range subjectNames {
+		files := subjects[subjectName].files
 		sort.Slice(files, func(a, b int) bool {
 			return files[a].AbsPath < files[b].AbsPath
 		})
 		violations = append(violations, Violation{
 			File:    rulekit.DisplayFilename(files[0].AbsPath),
 			Line:    1,
-			Message: fmt.Sprintf("service subject %q must declare %s.service.go with New%sService", scope, scope, upperCamelName(scope)),
+			Message: fmt.Sprintf("service subject %q must declare %s.service.go with New%sService", subjectName, subjectName, upperCamelName(subjectName)),
 		})
 	}
 	return violations

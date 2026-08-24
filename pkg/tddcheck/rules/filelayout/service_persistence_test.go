@@ -85,7 +85,7 @@ func (s *DeviceService) Get(ctx context.Context) error {
 	return err
 }
 `,
-		"internal/repository/x_store.repository.go": `package repository
+		"internal/repository/x.store.repository.go": `package repository
 type Store struct{}
 func NewStore() *Store { return &Store{} }
 `,

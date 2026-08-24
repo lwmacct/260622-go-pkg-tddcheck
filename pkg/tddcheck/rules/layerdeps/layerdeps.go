@@ -49,18 +49,12 @@ func checkFile(_ context.Context, snapshot *rulekit.Snapshot, file rulekit.GoFil
 func violationsInSnapshot(snapshot *rulekit.Snapshot) []Violation {
 	var violations []Violation
 	for _, file := range snapshot.Files {
-		if rulekit.FreeFile(file.Base) {
-			continue
-		}
 		violations = append(violations, violationsInFile(snapshot, file)...)
 	}
 	return violations
 }
 
 func violationsInFile(snapshot *rulekit.Snapshot, file rulekit.GoFile) []Violation {
-	if rulekit.FreeFile(file.Base) {
-		return nil
-	}
 	profile := snapshot.Profile
 	sourceLayer, sourceRel, ok := sourceLayer(file, profile)
 	if !ok {

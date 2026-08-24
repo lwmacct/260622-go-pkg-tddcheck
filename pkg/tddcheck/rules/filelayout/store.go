@@ -10,7 +10,7 @@ import (
 
 func storeViolations(file rulekit.GoFile, name fileName) []Violation {
 	var violations []Violation
-	expectedSubjectPrefix := upperCamelName(name.scope)
+	expectedSubjectPrefix := upperCamelName(name.qualifier())
 	for _, decl := range file.AST.Decls {
 		switch typed := decl.(type) {
 		case *ast.GenDecl:

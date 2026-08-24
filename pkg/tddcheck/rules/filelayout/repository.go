@@ -7,11 +7,11 @@ import (
 
 func repositoryViolations(fileSet *token.FileSet, filename string, name fileName, parsedFile *ast.File) []Violation {
 	var violations []Violation
-	if name.scope != "x_store" {
+	if name.namespace != "store" {
 		violations = append(violations, Violation{
 			File:    displayFilename(filename),
 			Line:    1,
-			Message: "repository files must use x_store scope",
+			Message: "repository files must use x.store namespace",
 		})
 	}
 	hasStore := false

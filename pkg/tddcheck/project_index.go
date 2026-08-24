@@ -238,7 +238,7 @@ func indexFromSnapshot(snapshot *rulekit.Snapshot) Index {
 		projectRoot: snapshot.ProjectRoot,
 	}
 	for _, file := range snapshot.Files {
-		if file.IsTest || rulekit.FreeFile(file.Base) {
+		if file.IsTest {
 			continue
 		}
 		switch file.Layer {

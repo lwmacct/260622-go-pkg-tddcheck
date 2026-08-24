@@ -42,12 +42,12 @@ import _ "example.com/app/internal/service"
 	assertLayerViolationContains(t, violations, "repository must not import service")
 }
 
-func TestViolationsAllowsFreeFileImports(t *testing.T) {
+func TestViolationsChecksSharedFreeFileImports(t *testing.T) {
 	root := fixture(t, map[string]string{
-		"internal/handler/x_free.go": `package handler
+		"internal/handler/x.shared.free.go": `package handler
 import _ "example.com/app/internal/repository"
 `,
-		"internal/repository/x_free.go": `package repository
+		"internal/repository/x.shared.free.go": `package repository
 import _ "example.com/app/internal/service"
 `,
 	})
@@ -56,14 +56,16 @@ import _ "example.com/app/internal/service"
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(violations) != 0 {
-		t.Fatalf("expected no violations, got %#v", violations)
+	if len(violations) != 2 {
+		t.Fatalf("expected 2 violations, got %#v", violations)
 	}
+	assertLayerViolationContains(t, violations, "handler must not import repository")
+	assertLayerViolationContains(t, violations, "repository must not import service")
 }
 
-func TestViolationsStillRejectsForbiddenImportsOutsideFreeFiles(t *testing.T) {
+func TestViolationsChecksImportsInsideAndOutsideFreeFiles(t *testing.T) {
 	root := fixture(t, map[string]string{
-		"internal/handler/x_free.go": `package handler
+		"internal/handler/x.shared.free.go": `package handler
 import _ "example.com/app/internal/repository"
 `,
 		"internal/handler/device.handler.go": `package handler
@@ -75,8 +77,8 @@ import _ "example.com/app/internal/repository"
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(violations) != 1 {
-		t.Fatalf("expected 1 violation, got %#v", violations)
+	if len(violations) != 2 {
+		t.Fatalf("expected 2 violations, got %#v", violations)
 	}
 	assertLayerViolationContains(t, violations, "handler must not import repository")
 }

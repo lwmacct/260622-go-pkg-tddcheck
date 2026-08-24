@@ -1,8 +1,6 @@
 package filelayout
 
 import (
-	"strings"
-
 	"github.com/lwmacct/260622-go-pkg-tddcheck/pkg/tddcheck/rulekit"
 )
 
@@ -36,12 +34,13 @@ func (c declContext) layer() string {
 }
 
 var defaultDeclPolicies = []declPolicy{
-	{kind: "context", match: layerScope("handler", "x_http"), check: checkArchitectureContext},
-	{kind: "endpoint", match: layerScope("handler", "x_http"), check: checkArchitectureEndpoint},
+	{kind: "free", check: allowAnyDeclarations},
+	{kind: "context", match: architectureLayerNamespace("handler", "http"), check: checkArchitectureContext},
+	{kind: "endpoint", match: architectureLayerNamespace("handler", "http"), check: checkArchitectureEndpoint},
 	{kind: "dto", check: checkDTO},
 	{kind: "handler", match: layer("handler"), check: checkHandler},
 	{kind: "mapper", check: checkMapper},
-	{kind: "middleware", match: layerScope("handler", "x_http"), check: checkArchitectureMiddleware},
+	{kind: "middleware", match: architectureLayerNamespace("handler", "http"), check: checkArchitectureMiddleware},
 	{kind: "commands", check: checkCommands},
 	{kind: "provider", match: layer("service"), check: checkProvider},
 	{kind: "utils", check: checkUtils},
@@ -59,14 +58,18 @@ func layer(value string) func(declContext) bool {
 	}
 }
 
-func layerScope(layerValue string, scope string) func(declContext) bool {
+func architectureLayerNamespace(layerValue string, namespace string) func(declContext) bool {
 	return func(context declContext) bool {
-		return context.layer() == layerValue && context.name.scope == scope
+		return context.layer() == layerValue && context.name.namespace == namespace
 	}
 }
 
 func architectureSupport(context declContext) bool {
-	return context.layer() == "handler" && context.name.scope == "x_http"
+	return context.layer() == "handler" && context.name.namespace == "http"
+}
+
+func allowAnyDeclarations(declContext) []Violation {
+	return nil
 }
 
 func checkArchitectureContext(context declContext) []Violation {
@@ -82,7 +85,7 @@ func checkDTO(context declContext) []Violation {
 }
 
 func checkHandler(context declContext) []Violation {
-	if strings.HasPrefix(context.name.scope, architectureScopePrefix) {
+	if context.name.namespace != "" {
 		return architectureHandlerViolations(context.file.Fset, context.file.AbsPath, context.file.AST)
 	}
 	return handlerViolations(context.file.Fset, context.file.AbsPath, context.name, context.file.AST)

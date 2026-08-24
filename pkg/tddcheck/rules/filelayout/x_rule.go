@@ -38,7 +38,7 @@ func Check(ctx context.Context, root string, config rulekit.Config) ([]Violation
 }
 
 func checkFile(_ context.Context, snapshot *rulekit.Snapshot, file rulekit.GoFile) ([]rulekit.Diagnostic, error) {
-	if file.IsTest || rulekit.FreeFile(file.Base) || file.Layer == "" {
+	if file.IsTest || file.Layer == "" {
 		return nil, nil
 	}
 	return diagnostics(violationsInFile(snapshot.Profile, file)), nil
@@ -62,7 +62,7 @@ func diagnostics(values []Violation) []rulekit.Diagnostic {
 func violationsInSnapshot(snapshot *rulekit.Snapshot) []Violation {
 	var violations []Violation
 	for _, file := range snapshot.Files {
-		if file.IsTest || rulekit.FreeFile(file.Base) {
+		if file.IsTest {
 			continue
 		}
 		if file.Layer == "" {
@@ -76,9 +76,6 @@ func violationsInSnapshot(snapshot *rulekit.Snapshot) []Violation {
 }
 
 func violationsInFile(profile rulekit.Profile, file rulekit.GoFile) []Violation {
-	if rulekit.FreeFile(file.Base) {
-		return nil
-	}
 	layer := file.Layer
 	layerProfile, ok := profile.Layer(layer)
 	if !ok {
@@ -87,9 +84,9 @@ func violationsInFile(profile rulekit.Profile, file rulekit.GoFile) []Violation 
 	mode := layerProfile.FileNameMode
 	parsed, ok := parseFileName(file.Base, mode)
 	if !ok {
-		pattern := "{scope}.{type}.go"
+		pattern := "{subject}.{kind}.go or x.{namespace}.{kind}.go"
 		if mode == rulekit.FileNameModePackageKind {
-			pattern = "{type}.go"
+			pattern = "{kind}.go"
 		}
 		return []Violation{{
 			File:    rulekit.DisplayFilename(file.AbsPath),
@@ -116,62 +113,72 @@ type layoutFile struct {
 
 func layoutFileViolations(context layoutFile) []Violation {
 	var violations []Violation
-	if context.scopeKindMode() && rulekit.StringIn(context.name.scope, context.profile.ForbiddenWeakScopes) {
+	if context.qualifiedKindMode() && !context.architectureFile() && rulekit.StringIn(context.name.subject, context.profile.ForbiddenWeakSubjects) {
 		violations = append(violations, Violation{
 			File:    rulekit.DisplayFilename(context.file.AbsPath),
 			Line:    1,
-			Message: fmt.Sprintf("scope %q is too weak; use a subject name or approved shared scope", context.name.scope),
+			Message: fmt.Sprintf("subject %q is too weak; use a specific business subject", context.name.subject),
 		})
 	}
-	if context.scopeKindMode() && !context.architectureScope() {
-		if escapedKind, ok := escapedKindScope(context.profile.EscapedScopeSuffixes, context.name.scope); ok {
+	if context.qualifiedKindMode() && !context.architectureFile() {
+		if escapedKind, ok := escapedKindSubject(context.profile.EscapedSubjectSuffixes, context.name.subject); ok {
 			violations = append(violations, Violation{
 				File:    rulekit.DisplayFilename(context.file.AbsPath),
 				Line:    1,
-				Message: fmt.Sprintf("scope %q must not encode file type %q; use the subject scope and a single type suffix", context.name.scope, escapedKind),
+				Message: fmt.Sprintf("subject %q must not encode file kind %q; use the business subject and a single kind suffix", context.name.subject, escapedKind),
 			})
 		}
 	}
-	if context.scopeKindMode() && !context.architectureScope() && context.profile.ArchitectureScopeReserved(context.name.scope) {
-		violations = append(violations, Violation{
-			File:    rulekit.DisplayFilename(context.file.AbsPath),
-			Line:    1,
-			Message: fmt.Sprintf("architecture scope %q must use x_%s prefix", context.name.scope, context.name.scope),
-		})
+	if context.qualifiedKindMode() && !context.architectureFile() {
+		namespace := context.name.subject
+		reserved := context.profile.ArchitectureNamespaceReserved(namespace)
+		if !reserved {
+			if legacyNamespace, ok := strings.CutPrefix(namespace, "x_"); ok {
+				namespace = legacyNamespace
+				reserved = context.profile.ArchitectureNamespaceReserved(namespace)
+			}
+		}
+		if reserved {
+			violations = append(violations, Violation{
+				File:    rulekit.DisplayFilename(context.file.AbsPath),
+				Line:    1,
+				Message: fmt.Sprintf("architecture namespace %q must use x.%s.{kind}.go naming", namespace, namespace),
+			})
+		}
 	}
-	if context.scopeKindMode() && context.architectureScope() && !context.profile.ArchitectureScopeReserved(strings.TrimPrefix(context.name.scope, architectureScopePrefix)) {
+	if context.qualifiedKindMode() && context.architectureFile() && !context.profile.ArchitectureNamespaceReserved(context.name.namespace) {
 		violations = append(violations, Violation{
 			File:    rulekit.DisplayFilename(context.file.AbsPath),
 			Line:    1,
-			Message: fmt.Sprintf("architecture scope %q is not reserved", context.name.scope),
+			Message: fmt.Sprintf("architecture namespace %q is not reserved", context.name.namespace),
 		})
 	}
 	if !context.profile.KindAllowed(context.file.Layer, context.name.kind) {
 		violations = append(violations, Violation{
 			File:    rulekit.DisplayFilename(context.file.AbsPath),
 			Line:    1,
-			Message: fmt.Sprintf("%s file type %q is not allowed", context.file.Layer, context.name.kind),
+			Message: fmt.Sprintf("%s file kind %q is not allowed", context.file.Layer, context.name.kind),
 		})
 	}
-	if context.scopeKindMode() && context.architectureScope() && !context.profile.ArchitectureScopeAllowed(context.file.Layer, context.name.scope) {
+	if context.qualifiedKindMode() && context.architectureFile() && !context.profile.ArchitectureNamespaceAllowed(context.file.Layer, context.name.namespace) {
 		violations = append(violations, Violation{
 			File:    rulekit.DisplayFilename(context.file.AbsPath),
 			Line:    1,
-			Message: fmt.Sprintf("architecture scope %q is not allowed in %s", context.name.scope, context.file.Layer),
+			Message: fmt.Sprintf("architecture namespace %q is not allowed in %s", context.name.namespace, context.file.Layer),
 		})
 	}
-	if context.scopeKindMode() {
-		violations = append(violations, inferredScopeViolations(context.name, context.file)...)
+	if context.qualifiedKindMode() {
+		violations = append(violations, inferredSubjectViolations(context.name, context.file)...)
 	}
 
 	violations = append(violations, declarationViolations(context.name, context.file)...)
 	return violations
 }
 
-func (f layoutFile) scopeKindMode() bool {
-	return f.mode == rulekit.FileNameModeScopeKind
+func (f layoutFile) qualifiedKindMode() bool {
+	return f.mode == rulekit.FileNameModeQualifiedKind
 }
 
-func (f layoutFile) architectureScope() bool {
-	return strings.HasPrefix(f.name.scope, architectureScopePrefix)
+func (f layoutFile) architectureFile() bool {
+	return f.name.namespace != ""
 }

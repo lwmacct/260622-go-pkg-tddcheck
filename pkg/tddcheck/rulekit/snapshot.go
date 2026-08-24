@@ -392,7 +392,3 @@ func LayerForRelPath(rel string, layers []string) string {
 	}
 	return ""
 }
-
-func FreeFile(base string) bool {
-	return base == "x_free.go"
-}

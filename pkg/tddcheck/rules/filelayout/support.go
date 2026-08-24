@@ -49,7 +49,7 @@ func supportGenDeclViolations(fileSet *token.FileSet, filename string, layer str
 				}
 			}
 			if layer == "repository" && forbiddenRepositorySupportTypeName(name, typeSpec.Name.Name) {
-				violations = append(violations, violationAt(fileSet, filename, typeSpec.Pos(), fmt.Sprintf("repository support type %s must start with %s", typeSpec.Name.Name, upperCamelName(name.scope))))
+				violations = append(violations, violationAt(fileSet, filename, typeSpec.Pos(), fmt.Sprintf("repository support type %s must start with %s", typeSpec.Name.Name, upperCamelName(name.subject))))
 			}
 			if layer == "repository" && forbiddenRepositorySupportModelType(typeSpec) {
 				violations = append(violations, violationAt(fileSet, filename, typeSpec.Pos(), "repository support files must not declare schema models; place Model structs and ORM tags in .schema.go"))
@@ -102,10 +102,10 @@ func supportFunctionName(name string) bool {
 }
 
 func forbiddenRepositorySupportTypeName(name fileName, typeName string) bool {
-	if strings.HasPrefix(name.scope, architectureScopePrefix) || !startsWithUpper(typeName) {
+	if name.namespace != "" || !startsWithUpper(typeName) {
 		return false
 	}
-	return !camelTokenPrefix(typeName, upperCamelName(name.scope))
+	return !camelTokenPrefix(typeName, upperCamelName(name.subject))
 }
 
 func camelTokenPrefix(value string, prefix string) bool {

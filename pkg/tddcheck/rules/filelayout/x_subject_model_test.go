@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestViolationsAllowsModelAsDomainScope(t *testing.T) {
+func TestViolationsAllowsModelAsDomainSubject(t *testing.T) {
 	root := fixture(t, map[string]string{
 		"internal/service/vendor_model.service.go": `package service
 type VendorModelService struct{}
@@ -25,6 +25,6 @@ func VendorModelSchema() {}
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertNoViolationContains(t, violations, `scope "vendor_model" must not encode file type`)
-	assertNoViolationContains(t, violations, `scope "admin_model" must not encode file type`)
+	assertNoViolationContains(t, violations, `subject "vendor_model" must not encode file kind`)
+	assertNoViolationContains(t, violations, `subject "admin_model" must not encode file kind`)
 }

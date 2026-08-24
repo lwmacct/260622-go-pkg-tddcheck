@@ -20,7 +20,7 @@ func (s *DeviceGroupHelper) Bad() {}
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertViolationContains(t, violations, `service file for DeviceGroupService must use scope "device_group"`)
+	assertViolationContains(t, violations, `service file for DeviceGroupService must use subject "device_group"`)
 	assertViolationContains(t, violations, "service files must only declare DeviceGroupService")
 	assertViolationContains(t, violations, "service files must only declare NewDeviceGroupService as a package-level function")
 	assertViolationContains(t, violations, "service receiver methods must use DeviceGroupService")

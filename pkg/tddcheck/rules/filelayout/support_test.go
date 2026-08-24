@@ -75,7 +75,7 @@ type IdentityUserRow struct{}
 type IdentitySSHKeychain struct{}
 type localHelper struct{}
 `,
-		"internal/repository/x_shared.support.go": `package repository
+		"internal/repository/x.shared.support.go": `package repository
 
 type SchemaDef struct{}
 `,

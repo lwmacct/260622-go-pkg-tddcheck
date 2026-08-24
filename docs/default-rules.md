@@ -7,16 +7,16 @@
 检查流程通过 `go/packages` 加载目标 module subtree，共享同一个 `token.FileSet`，并缓存 package graph、AST、`types.Info`、imports 和所属层。默认执行两组规则：
 
 ```text
-filelayout  文件命名、文件类型、声明内容和部分跨文件约束
+filelayout  文件命名、文件 kind、声明内容和部分跨文件约束
 layerdeps   分层 import 依赖约束
 ```
 
 以下文件和目录会被特殊处理：
 
 ```text
-*_test.go   默认不加载；IncludeTests=true 时可供依赖和自定义规则检查
-x_free.go   不参与规则检查和架构索引
-隐藏目录    不参与扫描
+*_test.go                                      默认不加载；IncludeTests=true 时可供依赖和自定义规则检查
+{subject}.free.go / x.{namespace}.free.go      不限制声明内容；仍参与依赖检查，不参与架构索引
+隐藏目录                                       不参与扫描
 vendor/node_modules/dist/build  默认不参与扫描
 ```
 
@@ -38,33 +38,37 @@ repository
 
 ## 文件命名
 
-默认命名模式是 `scope_kind`：
+默认命名模式是 `qualified_kind`：
 
 ```text
-{subject}.{type}.go
-x_{scope}.{type}.go
+{subject}.{kind}.go
+x.{namespace}.{kind}.go
 ```
 
-`subject` 表示业务主题，不限定为 HTTP/REST resource。`x_` 文件表示架构或共享 scope；`scope` 必须属于所在层的架构 scope 白名单，`type` 仍按所在层允许的文件类型检查。
+`subject` 表示业务主题，不限定为 HTTP/REST resource。`x` 是架构文件标识，`namespace` 必须属于所在层的架构 namespace 白名单，`kind` 仍按所在层允许的文件 kind 检查。
 
 示例：
 
 ```text
 internal/handler/device.handler.go
 internal/handler/device.dto.go
-internal/handler/x_shared.dto.go
-internal/handler/x_http.endpoint.go
-internal/handler/x_http.context.go
+internal/handler/device.free.go
+internal/handler/x.shared.dto.go
+internal/handler/x.http.endpoint.go
+internal/handler/x.http.context.go
+internal/handler/x.http.free.go
 
 internal/service/device.service.go
 internal/service/device.commands.go
 internal/service/device.provider.go
-internal/service/x_shared.support.go
+internal/service/x.shared.support.go
+internal/service/x.shared.free.go
 
 internal/repository/device.support.go
 internal/repository/device.store.go
-internal/repository/x_shared.support.go
-internal/repository/x_store.repository.go
+internal/repository/x.shared.support.go
+internal/repository/x.store.repository.go
+internal/repository/x.store.free.go
 ```
 
 拒绝示例：
@@ -77,47 +81,48 @@ device.models.go
 device.writes.go
 device.database.go
 helper.utils.go
+x.unknown.free.go
 ```
 
 也可以把某一层改成 `package_kind` 命名模式，此时文件名使用：
 
 ```text
-{type}.go
+{kind}.go
 ```
 
-这适合 `internal/adapter/httpauth/service.go` 这类目录即业务 scope 的布局。
+这适合 `internal/adapter/httpauth/service.go` 这类目录即业务 subject 的布局。
 
-## 默认文件类型
+## 默认文件 kind
 
-各层允许的文件类型：
+各层允许的文件 kind：
 
 ```text
-handler:    support, mapper, context, dto, endpoint, handler, middleware, utils
-service:    support, mapper, commands, provider, service
-repository: support, repository, schema, store
+handler:    free, support, mapper, context, dto, endpoint, handler, middleware, utils
+service:    free, support, mapper, commands, provider, service
+repository: free, support, repository, schema, store
 ```
 
-各层允许的架构 scope：
+各层允许的架构 namespace：
 
 ```text
-handler:    x_shared, x_http
-service:    x_shared
-repository: x_shared, x_store
+handler:    shared, http
+service:    shared
+repository: shared, store
 ```
 
 常见架构文件：
 
 ```text
 handler:
-  x_shared.support.go, x_shared.mapper.go, x_shared.dto.go, x_shared.handler.go, x_shared.utils.go
-  x_http.context.go, x_http.endpoint.go, x_http.middleware.go, x_http.support.go
+  x.shared.support.go, x.shared.mapper.go, x.shared.dto.go, x.shared.handler.go, x.shared.utils.go
+  x.http.context.go, x.http.endpoint.go, x.http.middleware.go, x.http.support.go
 
 service:
-  x_shared.support.go, x_shared.mapper.go
+  x.shared.support.go, x.shared.mapper.go
 
 repository:
-  x_shared.support.go
-  x_store.repository.go
+  x.shared.support.go
+  x.store.repository.go
 ```
 
 ## 内容规则
@@ -126,17 +131,18 @@ repository:
 *.support.go      声明类型、const、Err* var、util*/validate*/normalize*/Wrap*/Is*/As* 函数
 *.mapper.go       只能声明包级 To* 函数；禁止 context/database/http/huma/ORM 相关 import
 *.service.go      service 层声明一个 {Subject}Service、New{Subject}Service 和 service receiver 方法
-*.repository.go   repository 层只能用于 x_store.repository.go；必须声明 Store struct 和 NewStore
+*.repository.go   repository 层只能用于 x.store.repository.go；必须声明 Store struct 和 NewStore
 *.store.go        repository 层声明 Store receiver 方法；方法需接受 context.Context 且最后返回 error
 *.handler.go      handler 层声明 {Subject}Handler、Register* 函数和 handler receiver 方法
 *.dto.go          只能声明 DTO/DTOs 类型；不能声明函数
-*.context.go      仅 handler/x_http 使用；声明私有 *Key 类型和 Context* / *FromContext helper
-*.endpoint.go     仅 handler/x_http 使用；必须声明 Endpoint struct 和 NewEndpoint
-*.middleware.go   仅 handler/x_http 使用；声明 Middleware、Endpoint/private receiver 方法和 util* helper
+*.context.go      仅 handler/x.http 使用；声明私有 *Key 类型和 Context* / *FromContext helper
+*.endpoint.go     仅 handler/x.http 使用；必须声明 Endpoint struct 和 NewEndpoint
+*.middleware.go   仅 handler/x.http 使用；声明 Middleware、Endpoint/private receiver 方法和 util* helper
 *.utils.go        只能声明包级 util* 函数
 *.commands.go     只能声明类型；类型名必须以 Request、Response、Result 或 Item 结尾
 *.provider.go     service 层声明 {Subject}Provider、New* 构造和 provider receiver 方法
 *.schema.go       repository 层声明 {Subject}*Model struct、schema 生命周期函数和 *Model receiver hook
+*.free.go         可以声明任意内容；可用于任意合法 subject 或当前层允许的 namespace
 ```
 
 额外约束：
@@ -153,18 +159,18 @@ appcmd 作为依赖层启用时，不得 import huma、注册 huma route 或声�
 ## 命名规则
 
 ```text
-资源 scope 使用 snake_case
-架构 scope 使用 x_ 前缀
-禁止使用 common、default、helper、helpers、misc、util、utils 等弱 scope
-资源 scope 不能把文件类型词编码进 scope，例如 device_update、device_mapper
+业务 subject 使用 snake_case
+架构文件使用 x.{namespace}.{kind}.go；x 是架构标识
+禁止使用 common、default、helper、helpers、misc、util、utils 等弱 subject
+业务 subject 不能把文件 kind 编码进名称，例如 device_update、device_mapper
 mapper 函数必须以 To 开头
 utils 函数必须以 util 开头
 support 函数必须以 util、validate、normalize、Wrap、Is 或 As 开头
 ```
 
-业务 scope 会从声明名中推断 snake_case。例如 `DeviceGroupService` 对应 `device_group.service.go`。
+业务 subject 会从声明名中推断 snake_case。例如 `DeviceGroupService` 对应 `device_group.service.go`。
 
-service 层同一业务 subject 如果声明了 `commands`、`provider` 或 `support` 等文件，默认也必须声明对应的 `{subject}.service.go` 和 `New{Subject}Service`。`x_` 架构 scope 不受这个要求影响。
+service 层同一业务 subject 如果声明了 `commands`、`provider` 或 `support` 等文件，默认也必须声明对应的 `{subject}.service.go` 和 `New{Subject}Service`。架构 namespace 和 `free` kind 不受这个要求影响。
 
 ## 分层依赖
 
@@ -184,7 +190,7 @@ example.com/app/internal/service
 example.com/app/internal/repository/device
 ```
 
-`x_free.go` 不参与分层依赖检查。
+所有 `free` 文件只免除 filelayout 的声明内容约束，仍参与分层依赖检查。
 
 ## 架构索引
 
@@ -206,15 +212,15 @@ repository   *.schema.go 中的 *Model、bun table tag、字段 tag 和 ForeignK
 配置字段：
 
 ```text
-LayerDirs             参与 filelayout 检查的层目录名
-DependencyLayerDirs   参与 layerdeps 检查的层目录名；nil 时等于 LayerDirs
-SkipDirs              扫描时跳过的目录名
-LayerRules            禁止的 import 依赖规则
-LayerFileNameModes    每层文件命名模式：scope_kind 或 package_kind
-LayerFileKinds        每层允许的文件类型
-ArchitectureScopes    每层允许的 x_ 架构 scope
-EscapedScopeSuffixes  禁止编码进业务 scope 的文件类型或动作词
-ForbiddenWeakScopes   禁止使用的弱业务 scope
+LayerDirs               参与 filelayout 检查的层目录名
+DependencyLayerDirs     参与 layerdeps 检查的层目录名；nil 时等于 LayerDirs
+SkipDirs                扫描时跳过的目录名
+LayerRules              禁止的 import 依赖规则
+LayerFileNameModes      每层文件命名模式：qualified_kind 或 package_kind
+LayerFileKinds          每层允许的文件 kind
+ArchitectureNamespaces  每层允许的架构 namespace；配置值不包含 x. 标识
+EscapedSubjectSuffixes  禁止编码进业务 subject 的文件 kind 或动作词
+ForbiddenWeakSubjects   禁止使用的弱业务 subject
 ```
 
 配置的 slice 或 map 字段为 `nil` 时继承默认值；显式设置为非 `nil` 空集合时关闭对应默认项。
@@ -231,7 +237,7 @@ config := tddcheck.Config{
 	LayerFileKinds: map[string][]string{
 		"adapter": {"endpoint", "service"},
 	},
-	ArchitectureScopes: map[string][]string{},
+	ArchitectureNamespaces: map[string][]string{},
 	LayerRules: []tddcheck.LayerDependencyRule{
 		{
 			SourceLayer: "runtime",

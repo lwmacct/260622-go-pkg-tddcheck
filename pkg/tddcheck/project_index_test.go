@@ -362,6 +362,18 @@ func findTableIndex(index Index, table string) *TableIndex {
 	return nil
 }
 
+func TestScopeFromFilenamePreservesArchitectureNamespace(t *testing.T) {
+	tests := map[string]string{
+		"device_group.handler.go": "device_group",
+		"x.shared.handler.go":     "x.shared",
+	}
+	for base, want := range tests {
+		if got := scopeFromFilename(base); got != want {
+			t.Errorf("scopeFromFilename(%q) = %q, want %q", base, got, want)
+		}
+	}
+}
+
 func assertFieldIndex(t *testing.T, table TableIndex, name string, column string, goType string, primaryKey bool, autoIncrement bool, notNull bool, nullable bool, unique string) {
 	t.Helper()
 

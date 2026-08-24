@@ -13,10 +13,10 @@ type DeviceDTO struct{}
 		"internal/handler/device.mapper.go": `package handler
 func ToDeviceDTO() DeviceDTO { return DeviceDTO{} }
 `,
-		"internal/handler/x_shared.dto.go": `package handler
+		"internal/handler/x.shared.dto.go": `package handler
 type BodyDTO struct{}
 `,
-		"internal/handler/x_http.endpoint.go": `package handler
+		"internal/handler/x.http.endpoint.go": `package handler
 type Endpoint struct{}
 type Config struct{}
 type ServiceConfig struct{}
@@ -25,18 +25,18 @@ func NewEndpoint(cfg Config) *Endpoint { return &Endpoint{} }
 func (e *Endpoint) Handler() {}
 func (e *Endpoint) register() {}
 `,
-		"internal/handler/x_http.middleware.go": `package handler
+		"internal/handler/x.http.middleware.go": `package handler
 type Middleware func()
 func (e *Endpoint) sessionMiddleware() Middleware { return nil }
 func utilMiddleware() {}
 `,
-		"internal/handler/x_http.support.go": `package handler
+		"internal/handler/x.http.support.go": `package handler
 type AuthConfig struct{}
 type EndpointRoutes interface{}
 func currentUser() {}
 func IsEnabled() bool { return true }
 `,
-		"internal/handler/x_http.context.go": `package handler
+		"internal/handler/x.http.context.go": `package handler
 import "context"
 type requestKey struct{}
 func ContextWithRequest(ctx context.Context) context.Context { return ctx }
@@ -67,10 +67,10 @@ type DeviceGroupService struct{}
 func NewDeviceGroupService() *DeviceGroupService { return &DeviceGroupService{} }
 func (s *DeviceGroupService) ListGroups() {}
 `,
-		"internal/service/x_shared.support.go": `package service
+		"internal/service/x.shared.support.go": `package service
 type DeviceRow struct{}
 `,
-		"internal/service/x_shared.mapper.go": `package service
+		"internal/service/x.shared.mapper.go": `package service
 func ToRepositoryDevice() {}
 `,
 		"internal/repository/device.support.go": `package repository
@@ -80,11 +80,11 @@ type DeviceRow struct{}
 import "context"
 func (s *Store) ListDevices(ctx context.Context) ([]string, error) { return nil, nil }
 `,
-		"internal/repository/x_store.repository.go": `package repository
+		"internal/repository/x.store.repository.go": `package repository
 type Store struct{}
 func NewStore() *Store { return &Store{} }
 `,
-		"internal/repository/x_shared.support.go": `package repository
+		"internal/repository/x.shared.support.go": `package repository
 type DeviceCreate struct{}
 `,
 	})
@@ -100,7 +100,7 @@ type DeviceCreate struct{}
 
 func TestViolationsRejectsInvalidArchitectureEndpointReceiver(t *testing.T) {
 	root := fixture(t, map[string]string{
-		"internal/handler/x_http.endpoint.go": `package handler
+		"internal/handler/x.http.endpoint.go": `package handler
 type Endpoint struct{}
 type Other struct{}
 func (o *Other) Handler() {}
@@ -116,7 +116,7 @@ func (o *Other) Handler() {}
 
 func TestViolationsRequiresArchitectureEndpointEntrypoint(t *testing.T) {
 	root := fixture(t, map[string]string{
-		"internal/handler/x_http.endpoint.go": `package handler
+		"internal/handler/x.http.endpoint.go": `package handler
 type Config struct{}
 func helper() {}
 `,
@@ -147,9 +147,9 @@ func AsNodeWSTunnelTargetValidation() error { return nil }
 	assertViolationContains(t, violations, `service subject "node_ws_tunnel" must declare node_ws_tunnel.service.go with NewNodeWSTunnelService`)
 }
 
-func TestViolationsAllowsSharedServiceScopeWithoutServiceFile(t *testing.T) {
+func TestViolationsAllowsSharedServiceNamespaceWithoutServiceFile(t *testing.T) {
 	root := fixture(t, map[string]string{
-		"internal/service/x_shared.support.go": `package service
+		"internal/service/x.shared.support.go": `package service
 type SharedConfig struct{}
 `,
 	})
@@ -163,15 +163,23 @@ type SharedConfig struct{}
 	}
 }
 
-func TestViolationsAllowsFreeFileInAnyLayer(t *testing.T) {
+func TestViolationsAllowsFreeFilesForSubjectsAndNamespaces(t *testing.T) {
 	root := fixture(t, map[string]string{
-		"internal/handler/x_free.go": `package handler
+		"internal/handler/device.free.go": `package handler
 import _ "example.com/app/internal/repository"
 type AnythingDTO struct { Name string ` + "`json:\"name\"`" + ` }
 var BadName = 1
 func BuildWhatever() {}
 `,
-		"internal/service/x_free.go": `package service
+		"internal/handler/x.http.free.go": `package handler
+type HTTPAnything struct{}
+func BuildHTTPWhatever() {}
+`,
+		"internal/service/device.free.go": `package service
+type DeviceAnything struct{}
+func BuildDeviceWhatever() {}
+`,
+		"internal/service/x.shared.free.go": `package service
 import (
 	"net/http"
 	_ "example.com/app/internal/handler"
@@ -179,7 +187,7 @@ import (
 type DeviceDTO struct { Name string ` + "`json:\"name\"`" + ` }
 func (d DeviceDTO) Handler(w http.ResponseWriter, r *http.Request) {}
 `,
-		"internal/repository/x_free.go": `package repository
+		"internal/repository/x.store.free.go": `package repository
 import _ "example.com/app/internal/service"
 type Free struct{}
 func BuildWhatever() {}
@@ -193,4 +201,21 @@ func BuildWhatever() {}
 	if len(violations) != 0 {
 		t.Fatalf("expected no violations, got %#v", violations)
 	}
+}
+
+func TestViolationsStillChecksFreeFileNamespace(t *testing.T) {
+	root := fixture(t, map[string]string{
+		"internal/service/x.store.free.go": `package service
+func BuildStore() {}
+`,
+	})
+
+	violations, err := checkRoot(filepath.Join(root, "internal"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(violations) != 1 {
+		t.Fatalf("expected 1 violation, got %#v", violations)
+	}
+	assertViolationContains(t, violations, `architecture namespace "store" is not allowed in service`)
 }

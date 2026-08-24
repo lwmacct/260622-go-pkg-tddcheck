@@ -143,6 +143,42 @@ func NewDeviceService() *DeviceService { return &DeviceService{} }
 	}
 }
 
+func TestReadConfigAcceptsNamespaceAndSubjectVocabulary(t *testing.T) {
+	root := cliFixture(t, nil)
+	configFile := filepath.Join(root, "tddcheck.json")
+	cliWriteFile(t, root, "tddcheck.json", `{
+  "layerDirs": ["adapter"],
+  "layerFileNameModes": {"adapter": "qualified_kind"},
+  "layerFileKinds": {"adapter": ["free"]},
+  "architectureNamespaces": {"adapter": ["shared"]},
+  "escapedSubjectSuffixes": [],
+  "forbiddenWeakSubjects": []
+}`)
+
+	config, err := readConfig(configFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if config.LayerFileNameModes["adapter"] != "qualified_kind" ||
+		len(config.ArchitectureNamespaces["adapter"]) != 1 ||
+		config.ArchitectureNamespaces["adapter"][0] != "shared" {
+		t.Fatalf("unexpected config: %#v", config)
+	}
+}
+
+func TestReadConfigRejectsLegacyScopeVocabulary(t *testing.T) {
+	for _, field := range []string{"architectureScopes", "escapedScopeSuffixes", "forbiddenWeakScopes"} {
+		root := cliFixture(t, nil)
+		configFile := filepath.Join(root, "tddcheck.json")
+		cliWriteFile(t, root, "tddcheck.json", `{"`+field+`": {}}`)
+
+		_, err := readConfig(configFile)
+		if err == nil || !strings.Contains(err.Error(), field) {
+			t.Errorf("expected legacy field %q to be rejected, got %v", field, err)
+		}
+	}
+}
+
 func TestRunWithArgsPrintsUsage(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer

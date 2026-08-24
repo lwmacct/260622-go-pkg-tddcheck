@@ -25,7 +25,7 @@ func NewDeviceService() *DeviceService { return &DeviceService{} }
 import "context"
 func (s *Store) ListDevices(ctx context.Context) ([]string, error) { return nil, nil }
 `,
-		"internal/repository/x_store.repository.go": `package repository
+		"internal/repository/x.store.repository.go": `package repository
 type Store struct{}
 func NewStore() *Store { return &Store{} }
 `,
@@ -42,7 +42,7 @@ func NewStore() *Store { return &Store{} }
 
 func TestProjectAnalyzePassesArchitectureEndpointWithResourceHandlers(t *testing.T) {
 	root := fixture(t, map[string]string{
-		"internal/handler/x_http.endpoint.go": `package handler
+		"internal/handler/x.http.endpoint.go": `package handler
 import _ "example.com/app/internal/service"
 type Endpoint struct{}
 type Config struct{}
@@ -53,7 +53,7 @@ func (e *Endpoint) register() {}
 func (a nodeAccess) resolve() {}
 func currentUser() {}
 `,
-		"internal/handler/x_http.support.go": `package handler
+		"internal/handler/x.http.support.go": `package handler
 type ServiceConfig struct{}
 type RuntimeConfig struct{}
 type AuthConfig struct{}
@@ -72,7 +72,7 @@ import _ "example.com/app/internal/repository"
 type NodeQueryService struct{}
 func NewNodeQueryService() *NodeQueryService { return &NodeQueryService{} }
 `,
-		"internal/repository/x_store.repository.go": `package repository
+		"internal/repository/x.store.repository.go": `package repository
 type Store struct{}
 func NewStore() *Store { return &Store{} }
 `,
@@ -129,7 +129,7 @@ import _ "example.com/app/internal/adapter/wsworkspace"
 		LayerFileKinds: map[string][]string{
 			"adapter": {"endpoint"},
 		},
-		ArchitectureScopes: map[string][]string{},
+		ArchitectureNamespaces: map[string][]string{},
 		LayerRules: []LayerDependencyRule{
 			{SourceLayer: "runtime", TargetLayer: "adapter", Message: "runtime must not import adapter"},
 		},

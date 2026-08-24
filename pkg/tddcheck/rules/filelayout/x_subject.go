@@ -9,16 +9,16 @@ import (
 	"github.com/lwmacct/260622-go-pkg-tddcheck/pkg/tddcheck/rulekit"
 )
 
-func inferredScopeViolations(name fileName, file rulekit.GoFile) []Violation {
-	if strings.HasPrefix(name.scope, architectureScopePrefix) {
+func inferredSubjectViolations(name fileName, file rulekit.GoFile) []Violation {
+	if name.namespace != "" {
 		return nil
 	}
 	for _, identifier := range fileIdentifiers(file.AST) {
-		if expectedScope, ok := inferredSnakeScope(name.scope, identifier); ok && expectedScope != name.scope {
+		if expectedSubject, ok := inferredSnakeSubject(name.subject, identifier); ok && expectedSubject != name.subject {
 			return []Violation{{
 				File:    rulekit.DisplayFilename(file.AbsPath),
 				Line:    1,
-				Message: fmt.Sprintf("scope %q must use snake_case subject name %q inferred from %s", name.scope, expectedScope, identifier),
+				Message: fmt.Sprintf("subject %q must use snake_case name %q inferred from %s", name.subject, expectedSubject, identifier),
 			}}
 		}
 	}
@@ -46,7 +46,7 @@ func fileIdentifiers(parsedFile *ast.File) []string {
 	return identifiers
 }
 
-func inferredSnakeScope(scope string, identifier string) (string, bool) {
+func inferredSnakeSubject(subject string, identifier string) (string, bool) {
 	tokens := camelTokens(identifier)
 	for start := 0; start < len(tokens); start++ {
 		var joined strings.Builder
@@ -55,7 +55,7 @@ func inferredSnakeScope(scope string, identifier string) (string, bool) {
 			if end-start < 1 {
 				continue
 			}
-			if joined.String() == strings.ReplaceAll(scope, "_", "") {
+			if joined.String() == strings.ReplaceAll(subject, "_", "") {
 				return strings.Join(tokens[start:end+1], "_"), true
 			}
 		}
@@ -94,9 +94,9 @@ func camelTokens(value string) []string {
 	return tokens
 }
 
-func escapedKindScope(escapedScopeSuffixes []string, scope string) (string, bool) {
-	for _, kind := range escapedScopeSuffixes {
-		if strings.HasSuffix(scope, "_"+kind) {
+func escapedKindSubject(escapedSubjectSuffixes []string, subject string) (string, bool) {
+	for _, kind := range escapedSubjectSuffixes {
+		if strings.HasSuffix(subject, "_"+kind) {
 			return kind, true
 		}
 	}

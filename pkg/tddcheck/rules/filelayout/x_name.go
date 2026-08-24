@@ -7,8 +7,9 @@ import (
 )
 
 type fileName struct {
-	scope string
-	kind  string
+	subject   string
+	namespace string
+	kind      string
 }
 
 func parseFileName(base string, mode string) (fileName, bool) {
@@ -23,11 +24,23 @@ func parseFileName(base string, mode string) (fileName, bool) {
 		return fileName{kind: name}, true
 	}
 	parts := strings.Split(name, ".")
-	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+	switch {
+	case len(parts) == 2 && parts[0] != "" && parts[0] != "x" && validKind(parts[1]):
+		return fileName{subject: parts[0], kind: parts[1]}, true
+	case len(parts) == 3 && parts[0] == "x" && parts[1] != "" && validKind(parts[2]):
+		return fileName{namespace: parts[1], kind: parts[2]}, true
+	default:
 		return fileName{}, false
 	}
-	if strings.Contains(parts[1], "_") {
-		return fileName{}, false
+}
+
+func validKind(value string) bool {
+	return value != "" && !strings.Contains(value, "_")
+}
+
+func (n fileName) qualifier() string {
+	if n.namespace != "" {
+		return n.namespace
 	}
-	return fileName{scope: parts[0], kind: parts[1]}, true
+	return n.subject
 }

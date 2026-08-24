@@ -11,8 +11,9 @@ type Config = rulekit.Config
 type LayerDependencyRule = rulekit.LayerDependencyRule
 
 const (
-	// FileNameModeScopeKind requires filenames in {scope}.{kind}.go form.
-	FileNameModeScopeKind = rulekit.FileNameModeScopeKind
+	// FileNameModeQualifiedKind requires {subject}.{kind}.go or
+	// x.{namespace}.{kind}.go filenames.
+	FileNameModeQualifiedKind = rulekit.FileNameModeQualifiedKind
 	// FileNameModePackageKind requires filenames in {kind}.go form.
 	FileNameModePackageKind = rulekit.FileNameModePackageKind
 )

@@ -3,6 +3,7 @@ package filelayout
 import (
 	"fmt"
 	"go/ast"
+	"go/token"
 	"strings"
 	"unicode"
 
@@ -23,6 +24,56 @@ func inferredSubjectViolations(name fileName, file rulekit.GoFile) []Violation {
 		}
 	}
 	return nil
+}
+
+func subjectOrderViolations(name fileName, file rulekit.GoFile) []Violation {
+	if name.Namespace != "" || (name.Kind != "support" && name.Kind != "types" && name.Kind != "dto") {
+		return nil
+	}
+	subjectTokens := strings.Split(name.Subject, "_")
+	if len(subjectTokens) == 0 {
+		return nil
+	}
+	var violations []Violation
+	for _, decl := range file.AST.Decls {
+		genDecl, ok := decl.(*ast.GenDecl)
+		if !ok || genDecl.Tok != token.TYPE {
+			continue
+		}
+		for _, spec := range genDecl.Specs {
+			typeSpec, ok := spec.(*ast.TypeSpec)
+			if !ok || !ast.IsExported(typeSpec.Name.Name) {
+				continue
+			}
+			tokens := camelTokens(typeSpec.Name.Name)
+			if subjectTokenIndex(tokens, subjectTokens) <= 0 {
+				continue
+			}
+			violations = append(violations, violationAt(
+				file.Fset,
+				file.AbsPath,
+				typeSpec.Pos(),
+				fmt.Sprintf("type %s contains file subject %s after a qualifier; subject tokens must come first", typeSpec.Name.Name, upperCamelName(name.Subject)),
+			))
+		}
+	}
+	return violations
+}
+
+func subjectTokenIndex(tokens []string, subject []string) int {
+	for start := 0; start+len(subject) <= len(tokens); start++ {
+		matched := true
+		for offset := range subject {
+			if tokens[start+offset] != subject[offset] {
+				matched = false
+				break
+			}
+		}
+		if matched {
+			return start
+		}
+	}
+	return -1
 }
 
 func fileIdentifiers(parsedFile *ast.File) []string {

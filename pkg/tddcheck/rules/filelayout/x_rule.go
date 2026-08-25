@@ -188,6 +188,9 @@ func layoutFileViolations(context layoutFile) []Violation {
 	if context.qualifiedKindMode() && context.name.Kind != "free" {
 		violations = append(violations, inferredSubjectViolations(context.name, context.file)...)
 	}
+	if context.qualifiedKindMode() {
+		violations = append(violations, subjectOrderViolations(context.name, context.file)...)
+	}
 
 	violations = append(violations, declarationViolations(context.profile, context.name, context.file, policyID)...)
 	return violations

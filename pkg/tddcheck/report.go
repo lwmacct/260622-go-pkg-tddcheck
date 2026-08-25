@@ -10,6 +10,7 @@ import (
 type Diagnostic = rulekit.Diagnostic
 type SuggestedFix = rulekit.SuggestedFix
 type RenameFix = rulekit.RenameFix
+type TextEdit = rulekit.TextEdit
 type Severity = rulekit.Severity
 type Position = rulekit.Position
 type Range = rulekit.Range
@@ -31,7 +32,7 @@ func (a Analysis) Passed() bool {
 		return false
 	}
 	for _, diagnostic := range a.Diagnostics {
-		if diagnostic.Severity == SeverityError {
+		if diagnostic.Severity == SeverityError || (a.FailOnWarnings && diagnostic.Severity == SeverityWarning) {
 			return false
 		}
 	}

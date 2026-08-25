@@ -9,12 +9,12 @@ import (
 	"github.com/lwmacct/260622-go-pkg-tddcheck/pkg/tddcheck/rulekit"
 )
 
-func serviceViolations(fileSet *token.FileSet, filename string, name fileName, parsedFile *ast.File) []Violation {
+func serviceViolations(fileSet *token.FileSet, filename string, name fileName, parsedFile *ast.File, initialisms map[string]string) []Violation {
 	var violations []Violation
 	serviceName, serviceNameOK := serviceStructName(parsedFile)
 	expectedServiceName := serviceName
 	if expectedServiceName == "" {
-		expectedServiceName = upperCamelName(name.Qualifier()) + "Service"
+		expectedServiceName = upperCamelNameWithInitialisms(name.Qualifier(), initialisms) + "Service"
 	}
 	if serviceNameOK {
 		expectedQualifier := snakeName(strings.TrimSuffix(expectedServiceName, "Service"))

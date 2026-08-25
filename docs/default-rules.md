@@ -118,7 +118,7 @@ x.shared.mapper.go
 默认允许的文件 kind：
 
 ```text
-handler:    free, support, types, mapper, context, dto, endpoint, handler, middleware, utils
+handler:    free, support, types, mapper, context, dto, endpoint, handler, middleware
 service:    free, support, types, mapper, commands, provider, service
 repository: free, support, types, repository, schema, store
 ```
@@ -148,16 +148,14 @@ repository: shared, store
 *.context.go      仅 x.http；声明私有 *Key 类型和 Context* / *FromContext helper
 *.endpoint.go     仅 x.http；必须声明 Endpoint struct 和 NewEndpoint
 *.middleware.go   仅 x.http；声明 Middleware、Endpoint receiver 方法和 helper
-*.utils.go        只能声明包级 util* 函数；使用该兼容性角色会产生 warning
-
 *.repository.go   仅 x.store.repository.go；必须声明 Store struct 和 NewStore
 *.schema.go       声明 {Subject}*Model struct、以 subject 开头的 schema 生命周期函数和 *Model receiver hook
 *.store.go        只能声明当前 subject 的 Store receiver 方法
 *.free.go         声明内容不受限制，但产生 warning 并进入 free 文件审计清单
 ```
 
-`utils` 与 `support` 的 helper 能力重叠。新 helper 推荐放入同 subject 的
-`.support.go`；保留 `.utils.go` 仅用于兼容已有代码。
+默认配置不再提供 `utils` 文件 kind。需要迁移遗留 helper 时，应将函数移动到同 subject 的
+`.support.go`，或在项目自定义配置中显式注册 `utils` policy。
 
 ### Store 方法
 
@@ -329,6 +327,9 @@ WarnSubjectPrivateAccess   同层跨 subject 私有声明访问 warning
 WarnUnclassifiedFiles      未分类文件 warning
 MaxSharedDeclarationLines  x.shared 声明最大 AST 行跨度；0 表示关闭
 LayerPackageNames          严格层目录对应的 package 名
+SubjectOwnershipModes      按 layer/kind 设置 subject ownership 为 error、warning 或 off
+Initialisms                自定义 snake_case subject 到 UpperCamel 的缩写映射
+FailOnWarnings             将 warning 诊断视为 Analysis.Passed 失败
 ```
 
 slice 或 map 字段为 `nil` 时继承对应默认值。显式空集合用于关闭可选项；`LayerFileNameModes`、`LayerKindPolicies` 等必需的逐层配置仍必须覆盖所有 `LayerDirs`。
@@ -336,3 +337,21 @@ slice 或 map 字段为 `nil` 时继承对应默认值。显式空集合用于�
 默认三包模式应继续使用 `qualified_kind`。`package_kind` 主要用于目录本身已经表达 subject 的自定义层，不改变默认三包结构。
 
 `LayerDependencyRule` 可以通过 `SourceRelPrefix`、`TargetRelPrefix` 及其 exception 字段收窄规则作用范围。所有前缀都相对 analyzed root。
+
+默认 subject ownership 是 error。需要逐步迁移某个文件角色时，可使用：
+
+```json
+{
+  "subjectOwnershipModes": {
+    "handler": {"dto": "warning"}
+  },
+  "initialisms": {
+    "rbac": "RBAC",
+    "uuid": "UUID"
+  },
+  "failOnWarnings": true
+}
+```
+
+subject ownership 和 subject inference 诊断会尽可能提供源码替换或文件重命名建议；这些建议通过
+`Diagnostic.SuggestedFix` 的 `edits` 和 `rename` 字段提供。

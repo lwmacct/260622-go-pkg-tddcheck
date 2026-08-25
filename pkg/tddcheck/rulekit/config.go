@@ -66,6 +66,14 @@ type Config struct {
 	// MaxSharedDeclarationLines limits the total AST line span of declarations in
 	// x.shared files. Zero disables the warning.
 	MaxSharedDeclarationLines int `json:"maxSharedDeclarationLines,omitempty"`
+	// SubjectOwnershipModes controls subject-prefix checks by layer and kind.
+	// Values are error, warning, or off. Unconfigured entries remain errors.
+	SubjectOwnershipModes map[string]map[string]string `json:"subjectOwnershipModes,omitempty"`
+	// Initialisms maps snake-case subject components to their exported spelling.
+	// Keys are case-insensitive. Nil inherits the built-in Go initialisms.
+	Initialisms map[string]string `json:"initialisms,omitempty"`
+	// FailOnWarnings makes Analysis.Passed report warnings as failures.
+	FailOnWarnings bool `json:"failOnWarnings,omitempty"`
 }
 
 type Profile struct {
@@ -82,6 +90,9 @@ type Profile struct {
 	WarnSubjectPrivateAccess   bool
 	WarnUnclassifiedFiles      bool
 	MaxSharedDeclarationLines  int
+	SubjectOwnershipModes      map[string]map[string]string
+	Initialisms                map[string]string
+	FailOnWarnings             bool
 
 	layersByName             map[string]LayerProfile
 	dependencyLayerSet       map[string]bool
@@ -150,7 +161,7 @@ func DefaultConfig() Config {
 			"handler": {
 				"free": "free", "support": "support", "types": "types", "mapper": "mapper",
 				"context": "context", "dto": "dto", "endpoint": "endpoint",
-				"handler": "handler", "middleware": "middleware", "utils": "utils",
+				"handler": "handler", "middleware": "middleware",
 			},
 			"service": {
 				"free": "free", "support": "support", "types": "types", "mapper": "mapper",
@@ -180,7 +191,6 @@ func DefaultConfig() Config {
 			"context",
 			"provider",
 			"schema",
-			"utils",
 			"commands",
 			"types",
 			"constants",
@@ -196,6 +206,11 @@ func DefaultConfig() Config {
 		ForbiddenWeakSubjects:      []string{"common", "default", "helper", "helpers", "misc", "util", "utils"},
 		PublicTypeBoundarySuffixes: []string{"Model", "Row", "Patch", "Create", "Filter"},
 		StoreMethodActions:         []string{"List", "Fetch", "Count", "Exists", "Create", "Update", "Delete", "Upsert", "Add", "Remove", "Replace"},
+		Initialisms: map[string]string{
+			"api": "API", "http": "HTTP", "id": "ID", "ip": "IP", "json": "JSON",
+			"llm": "LLM", "oauth": "OAuth", "rbac": "RBAC", "sql": "SQL", "ssh": "SSH",
+			"tls": "TLS", "url": "URL", "uuid": "UUID", "ws": "WS",
+		},
 	}
 }
 
@@ -239,6 +254,12 @@ func (c Config) WithDefaults() Config {
 	}
 	if c.StoreMethodActions == nil {
 		c.StoreMethodActions = defaults.StoreMethodActions
+	}
+	if c.SubjectOwnershipModes == nil {
+		c.SubjectOwnershipModes = defaults.SubjectOwnershipModes
+	}
+	if c.Initialisms == nil {
+		c.Initialisms = defaults.Initialisms
 	}
 	return c
 }
@@ -289,6 +310,8 @@ func (c Config) Compile() (Config, error) {
 	c.ForbiddenWeakSubjects = slices.Clone(c.ForbiddenWeakSubjects)
 	c.PublicTypeBoundarySuffixes = slices.Clone(c.PublicTypeBoundarySuffixes)
 	c.StoreMethodActions = slices.Clone(c.StoreMethodActions)
+	c.SubjectOwnershipModes = cloneStringMaps(c.SubjectOwnershipModes)
+	c.Initialisms = normalizeInitialisms(c.Initialisms)
 	return c, nil
 }
 
@@ -307,6 +330,29 @@ func (c Config) Validate() error {
 	}
 	if c.MaxSharedDeclarationLines < 0 {
 		return fmt.Errorf("max shared declaration lines must not be negative")
+	}
+	for layer, kinds := range c.SubjectOwnershipModes {
+		if !sliceSet(c.LayerDirs)[layer] {
+			return fmt.Errorf("subject ownership references unknown layer %q", layer)
+		}
+		for kind, mode := range kinds {
+			if !validFileAtom(kind) {
+				return fmt.Errorf("subject ownership has invalid file kind %q", kind)
+			}
+			switch mode {
+			case "error", "warning", "off":
+			default:
+				return fmt.Errorf("subject ownership for %s.%s has invalid mode %q", layer, kind, mode)
+			}
+		}
+	}
+	for key, value := range c.Initialisms {
+		if key == "" || value == "" {
+			return fmt.Errorf("initialisms must not contain empty keys or values")
+		}
+		if !startsWithUpperASCII(value) {
+			return fmt.Errorf("initialism %q must start with an uppercase letter", value)
+		}
 	}
 	dependencyLayers := sliceSet(c.DependencyLayerDirs)
 	for _, layer := range c.LayerDirs {
@@ -480,6 +526,18 @@ func cloneStringMaps(values map[string]map[string]string) map[string]map[string]
 	return result
 }
 
+func normalizeInitialisms(values map[string]string) map[string]string {
+	result := make(map[string]string, len(values))
+	for key, value := range values {
+		result[strings.ToLower(key)] = value
+	}
+	return result
+}
+
+func startsWithUpperASCII(value string) bool {
+	return value != "" && value[0] >= 'A' && value[0] <= 'Z'
+}
+
 func (c Config) Profile() Profile {
 	c = c.WithDefaults()
 	layers := make([]LayerProfile, 0, len(c.LayerDirs))
@@ -517,6 +575,9 @@ func (c Config) Profile() Profile {
 		WarnSubjectPrivateAccess:   c.WarnSubjectPrivateAccess,
 		WarnUnclassifiedFiles:      c.WarnUnclassifiedFiles,
 		MaxSharedDeclarationLines:  c.MaxSharedDeclarationLines,
+		SubjectOwnershipModes:      cloneStringMaps(c.SubjectOwnershipModes),
+		Initialisms:                normalizeInitialisms(c.Initialisms),
+		FailOnWarnings:             c.FailOnWarnings,
 		layersByName:               layersByName,
 		dependencyLayerSet:         sliceSet(c.DependencyLayerDirs),
 		kindPolicyByLayer:          kindPolicies,
@@ -558,6 +619,13 @@ func (p Profile) KindPolicy(layerName string, kind string) (string, bool) {
 
 func (p Profile) ArchitectureNamespaceAllowed(layerName string, namespace string) bool {
 	return p.architectureNamespaceSet[layerName][namespace]
+}
+
+func (p Profile) SubjectOwnershipMode(layerName string, kind string) string {
+	if mode := p.SubjectOwnershipModes[layerName][kind]; mode != "" {
+		return mode
+	}
+	return "error"
 }
 
 func StringIn(value string, values []string) bool {

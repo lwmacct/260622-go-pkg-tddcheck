@@ -73,6 +73,7 @@ type Analysis struct {
 	UnclassifiedFiles []string             `json:"unclassifiedFiles,omitempty"`
 	Diagnostics       []rulekit.Diagnostic `json:"diagnostics,omitempty"`
 	LoadErrors        []LoadError          `json:"packageErrors,omitempty"`
+	FailOnWarnings    bool                 `json:"failOnWarnings,omitempty"`
 
 	Duration    time.Duration `json:"-"`
 	projectRoot string
@@ -107,6 +108,7 @@ func (a *Analyzer) Analyze(ctx context.Context) (Analysis, error) {
 		UnclassifiedFiles: unclassifiedFilesFromSnapshot(snapshot),
 		Diagnostics:       diagnostics,
 		LoadErrors:        snapshot.LoadErrors,
+		FailOnWarnings:    snapshot.Profile.FailOnWarnings,
 		Duration:          time.Since(start),
 		projectRoot:       snapshot.ProjectRoot,
 	}, nil
@@ -149,6 +151,9 @@ func Assert(tb testing.TB, analyzer *Analyzer, options TestOptions) {
 	}
 	if !analysis.Passed() {
 		tb.Fatal(analysis.Text())
+	}
+	if len(analysis.Diagnostics) > 0 {
+		tb.Log(analysis.Text())
 	}
 	if options.Markdown == nil {
 		return

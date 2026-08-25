@@ -99,7 +99,7 @@ func checkHandler(context declContext) []Violation {
 	if context.name.Namespace != "" {
 		return architectureHandlerViolations(context.file.Fset, context.file.AbsPath, context.file.AST)
 	}
-	return handlerViolations(context.file.Fset, context.file.AbsPath, context.name, context.file.AST)
+	return handlerViolations(context.file.Fset, context.file.AbsPath, context.name, context.file.AST, context.profile.Initialisms)
 }
 
 func checkMapper(context declContext) []Violation {
@@ -115,7 +115,7 @@ func checkCommands(context declContext) []Violation {
 }
 
 func checkProvider(context declContext) []Violation {
-	return providerViolations(context.file, context.name)
+	return providerViolations(context.file, context.name, context.profile.Initialisms)
 }
 
 func checkUtils(context declContext) []Violation {
@@ -131,23 +131,23 @@ func checkSupport(context declContext) []Violation {
 		violations := checkArchitectureSupport(context)
 		return append(violations, supportDeclarationLineViolations(context.file.Fset, context.file.AbsPath, context.name, context.file.AST, context.profile.MaxSupportDeclarationLines)...)
 	}
-	return supportViolations(context.file, context.name, context.profile.MaxSupportDeclarationLines)
+	return supportViolations(context.file, context.name, context.profile.MaxSupportDeclarationLines, context.profile.Initialisms)
 }
 
 func checkTypes(context declContext) []Violation {
-	return typesViolations(context.file, context.name)
+	return typesViolations(context.file, context.name, context.profile.Initialisms)
 }
 
 func checkService(context declContext) []Violation {
-	return serviceViolations(context.file.Fset, context.file.AbsPath, context.name, context.file.AST)
+	return serviceViolations(context.file.Fset, context.file.AbsPath, context.name, context.file.AST, context.profile.Initialisms)
 }
 
 func checkStore(context declContext) []Violation {
-	return storeViolations(context.file, context.name, context.profile.StoreMethodActions)
+	return storeViolations(context.file, context.name, context.profile.StoreMethodActions, context.profile.Initialisms)
 }
 
 func checkSchema(context declContext) []Violation {
-	return schemaViolations(context.file.Fset, context.file.AbsPath, context.name, context.file.AST)
+	return schemaViolations(context.file.Fset, context.file.AbsPath, context.name, context.file.AST, context.profile.Initialisms)
 }
 
 func checkRepository(context declContext) []Violation {

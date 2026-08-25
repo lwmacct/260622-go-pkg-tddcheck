@@ -9,9 +9,9 @@ import (
 	"github.com/lwmacct/260622-go-pkg-tddcheck/pkg/tddcheck/rulekit"
 )
 
-func storeViolations(file rulekit.GoFile, name fileName, actions []string) []Violation {
+func storeViolations(file rulekit.GoFile, name fileName, actions []string, initialisms map[string]string) []Violation {
 	var violations []Violation
-	expectedSubjectPrefix := upperCamelName(name.Qualifier())
+	expectedSubjectPrefix := upperCamelNameWithInitialisms(name.Qualifier(), initialisms)
 	for _, decl := range file.AST.Decls {
 		switch typed := decl.(type) {
 		case *ast.GenDecl:

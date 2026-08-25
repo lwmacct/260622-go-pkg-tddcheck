@@ -3,6 +3,8 @@ package filelayout
 import (
 	"path/filepath"
 	"testing"
+
+	"github.com/lwmacct/260622-go-pkg-tddcheck/pkg/tddcheck/rulekit"
 )
 
 func TestViolationsChecksUtilsContent(t *testing.T) {
@@ -16,7 +18,9 @@ func buildDevice() {}
 `,
 	})
 
-	violations, err := checkRoot(filepath.Join(root, "internal"))
+	config := rulekit.DefaultConfig()
+	config.LayerKindPolicies["handler"]["utils"] = "utils"
+	violations, err := checkRoot(filepath.Join(root, "internal"), config)
 	if err != nil {
 		t.Fatal(err)
 	}

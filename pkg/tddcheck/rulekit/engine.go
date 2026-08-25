@@ -37,6 +37,14 @@ type RenameFix struct {
 type SuggestedFix struct {
 	Message string     `json:"message"`
 	Rename  *RenameFix `json:"rename,omitempty"`
+	Edits   []TextEdit `json:"edits,omitempty"`
+}
+
+// TextEdit describes a source replacement within one file.
+type TextEdit struct {
+	File    string `json:"file"`
+	Range   Range  `json:"range"`
+	NewText string `json:"newText"`
 }
 
 // Diagnostic is one stable, source-located rule result.

@@ -112,6 +112,25 @@ func BuildDevice() {}
 	}
 }
 
+func TestProjectAnalyzeCanFailOnWarnings(t *testing.T) {
+	root := fixture(t, map[string]string{
+		"internal/service/device.free.go": "package service\nfunc BuildDevice() {}\n",
+	})
+	config := DefaultConfig()
+	config.FailOnWarnings = true
+	analyzer, err := New(Options{Root: filepath.Join(root, "internal"), Config: config})
+	if err != nil {
+		t.Fatal(err)
+	}
+	analysis, err := analyzer.Analyze(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if analysis.Passed() {
+		t.Fatal("expected warning to fail when FailOnWarnings is enabled")
+	}
+}
+
 func TestProjectAnalyzeReportsViolations(t *testing.T) {
 	root := fixture(t, map[string]string{
 		"internal/handler/device.go": `package handler

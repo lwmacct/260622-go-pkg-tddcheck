@@ -6,20 +6,20 @@ import (
 	"strings"
 )
 
-func schemaViolations(fileSet *token.FileSet, filename string, name fileName, parsedFile *ast.File) []Violation {
+func schemaViolations(fileSet *token.FileSet, filename string, name fileName, parsedFile *ast.File, initialisms map[string]string) []Violation {
 	var violations []Violation
 	for _, decl := range parsedFile.Decls {
 		switch typed := decl.(type) {
 		case *ast.GenDecl:
-			violations = append(violations, schemaGenDeclViolations(fileSet, filename, name, typed)...)
+			violations = append(violations, schemaGenDeclViolations(fileSet, filename, name, typed, initialisms)...)
 		case *ast.FuncDecl:
-			violations = append(violations, schemaFuncViolations(fileSet, filename, name, typed)...)
+			violations = append(violations, schemaFuncViolations(fileSet, filename, name, typed, initialisms)...)
 		}
 	}
 	return violations
 }
 
-func schemaGenDeclViolations(fileSet *token.FileSet, filename string, name fileName, decl *ast.GenDecl) []Violation {
+func schemaGenDeclViolations(fileSet *token.FileSet, filename string, name fileName, decl *ast.GenDecl, initialisms map[string]string) []Violation {
 	var violations []Violation
 	switch decl.Tok {
 	case token.IMPORT:
@@ -34,7 +34,7 @@ func schemaGenDeclViolations(fileSet *token.FileSet, filename string, name fileN
 				violations = append(violations, violationAt(fileSet, filename, typeSpec.Pos(), "schema files must only declare model structs"))
 				continue
 			}
-			expected := upperCamelName(name.Qualifier())
+			expected := upperCamelNameWithInitialisms(name.Qualifier(), initialisms)
 			if !camelTokenPrefix(typeSpec.Name.Name, expected) || !strings.HasSuffix(typeSpec.Name.Name, "Model") {
 				violations = append(violations, violationAt(fileSet, filename, typeSpec.Pos(), "schema model type "+typeSpec.Name.Name+" must start with "+expected+" and end with Model"))
 			}
@@ -45,7 +45,7 @@ func schemaGenDeclViolations(fileSet *token.FileSet, filename string, name fileN
 	return violations
 }
 
-func schemaFuncViolations(fileSet *token.FileSet, filename string, name fileName, decl *ast.FuncDecl) []Violation {
+func schemaFuncViolations(fileSet *token.FileSet, filename string, name fileName, decl *ast.FuncDecl, initialisms map[string]string) []Violation {
 	if decl.Recv != nil {
 		receiver := receiverTypeName(decl.Recv)
 		if !strings.HasSuffix(receiver, "Model") {
@@ -57,7 +57,7 @@ func schemaFuncViolations(fileSet *token.FileSet, filename string, name fileName
 		return []Violation{violationAt(fileSet, filename, decl.Pos(), "schema package-level functions must be schema lifecycle functions")}
 	}
 	if name.Namespace == "" && ast.IsExported(decl.Name.Name) {
-		expected := upperCamelName(name.Subject)
+		expected := upperCamelNameWithInitialisms(name.Subject, initialisms)
 		if !camelTokenPrefix(decl.Name.Name, expected) {
 			return []Violation{violationAt(fileSet, filename, decl.Pos(), "schema lifecycle functions for "+name.Subject+" must start with "+expected)}
 		}

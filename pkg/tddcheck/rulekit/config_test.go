@@ -11,10 +11,22 @@ func TestCompileDeepCopiesConfiguration(t *testing.T) {
 	input.LayerDirs[0] = "changed"
 	input.LayerKindPolicies["handler"]["free"] = "changed"
 	input.LayerSubjectAnchorKinds["service"] = "changed"
+	input.Initialisms["rbac"] = "Rbac"
+	input.SubjectOwnershipModes = map[string]map[string]string{"handler": {"dto": "off"}}
 	if compiled.LayerDirs[0] != "handler" ||
 		compiled.LayerKindPolicies["handler"]["free"] != "free" ||
-		compiled.LayerSubjectAnchorKinds["service"] != "service" {
+		compiled.LayerSubjectAnchorKinds["service"] != "service" ||
+		compiled.Initialisms["rbac"] != "RBAC" ||
+		len(compiled.SubjectOwnershipModes) != 0 {
 		t.Fatalf("compiled config retained caller-owned data: %#v", compiled)
+	}
+}
+
+func TestValidateRejectsInvalidSubjectOwnershipMode(t *testing.T) {
+	config := DefaultConfig()
+	config.SubjectOwnershipModes = map[string]map[string]string{"handler": {"dto": "warn"}}
+	if _, err := config.Compile(); err == nil {
+		t.Fatal("expected invalid subject ownership mode to be rejected")
 	}
 }
 

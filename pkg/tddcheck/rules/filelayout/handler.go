@@ -9,9 +9,9 @@ import (
 	"github.com/lwmacct/260622-go-pkg-tddcheck/pkg/tddcheck/rulekit"
 )
 
-func handlerViolations(fileSet *token.FileSet, filename string, name fileName, parsedFile *ast.File) []Violation {
+func handlerViolations(fileSet *token.FileSet, filename string, name fileName, parsedFile *ast.File, initialisms map[string]string) []Violation {
 	var violations []Violation
-	expectedHandlerName := lowerCamelName(name.Subject) + "Handler"
+	expectedHandlerName := lowerCamelNameWithInitialisms(name.Subject, initialisms) + "Handler"
 	hasHandlerType := false
 	hasRegister := false
 

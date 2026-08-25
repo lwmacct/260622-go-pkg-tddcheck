@@ -145,13 +145,17 @@ func startsWithUpper(value string) bool {
 }
 
 func upperCamelName(value string) string {
+	return upperCamelNameWithInitialisms(value, nil)
+}
+
+func upperCamelNameWithInitialisms(value string, initialisms map[string]string) string {
 	parts := strings.Split(value, "_")
 	var builder strings.Builder
 	for _, part := range parts {
 		if part == "" {
 			continue
 		}
-		if initialism, ok := commonInitialism(part); ok {
+		if initialism, ok := configuredInitialism(part, initialisms); ok {
 			builder.WriteString(initialism)
 			continue
 		}
@@ -159,6 +163,13 @@ func upperCamelName(value string) string {
 		builder.WriteString(part[1:])
 	}
 	return builder.String()
+}
+
+func configuredInitialism(value string, initialisms map[string]string) (string, bool) {
+	if initialism, ok := initialisms[strings.ToLower(value)]; ok {
+		return initialism, true
+	}
+	return commonInitialism(value)
 }
 
 func commonInitialism(value string) (string, bool) {
@@ -171,14 +182,24 @@ func commonInitialism(value string) (string, bool) {
 		return "ID", true
 	case "ip":
 		return "IP", true
+	case "json":
+		return "JSON", true
 	case "llm":
 		return "LLM", true
+	case "oauth":
+		return "OAuth", true
+	case "rbac":
+		return "RBAC", true
+	case "sql":
+		return "SQL", true
 	case "ssh":
 		return "SSH", true
 	case "tls":
 		return "TLS", true
 	case "url":
 		return "URL", true
+	case "uuid":
+		return "UUID", true
 	case "ws":
 		return "WS", true
 	default:
@@ -187,9 +208,19 @@ func commonInitialism(value string) (string, bool) {
 }
 
 func lowerCamelName(value string) string {
-	upper := upperCamelName(value)
+	return lowerCamelNameWithInitialisms(value, nil)
+}
+
+func lowerCamelNameWithInitialisms(value string, initialisms map[string]string) string {
+	upper := upperCamelNameWithInitialisms(value, initialisms)
 	if upper == "" {
 		return ""
+	}
+	parts := strings.Split(value, "_")
+	if len(parts) > 0 {
+		if initialism, ok := configuredInitialism(parts[0], initialisms); ok {
+			return strings.ToLower(initialism) + upper[len(initialism):]
+		}
 	}
 	return strings.ToLower(upper[:1]) + upper[1:]
 }

@@ -8,9 +8,9 @@ import (
 	"github.com/lwmacct/260622-go-pkg-tddcheck/pkg/tddcheck/rulekit"
 )
 
-func providerViolations(file rulekit.GoFile, name fileName) []Violation {
+func providerViolations(file rulekit.GoFile, name fileName, initialisms map[string]string) []Violation {
 	var violations []Violation
-	expectedProviderType := upperCamelName(name.Qualifier()) + "Provider"
+	expectedProviderType := upperCamelNameWithInitialisms(name.Qualifier(), initialisms) + "Provider"
 	providerTypeFound := false
 	for _, decl := range file.AST.Decls {
 		switch typed := decl.(type) {

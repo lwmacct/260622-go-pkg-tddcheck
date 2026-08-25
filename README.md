@@ -71,6 +71,9 @@ go tool tddcheck check --root internal --config tddcheck.json
 
 配置文件使用 `Config` 的 lowerCamel JSON 字段名。解析采用 `encoding/json/v2` 严格语义：重复字段、未知字段和无效 UTF-8 会直接失败。
 
+warning 默认不会使分析失败；需要把架构债务纳入 CI 失败条件时，在配置中设置 `"failOnWarnings": true`。
+subject ownership 可按 layer/kind 设置为 `error`、`warning` 或 `off`，`initialisms` 可补充领域缩写。
+
 工具只接受完整长参数，例如 `--root`、`--format` 和 `--output`。直接运行 `go tool tddcheck` 等同于检查默认的 `internal` 目录。
 
 退出码：
@@ -86,7 +89,7 @@ go tool tddcheck check --root internal --config tddcheck.json
 - [Go 包文档](https://pkg.go.dev/github.com/lwmacct/260622-go-pkg-tddcheck/pkg/tddcheck)：`Analyzer`、`Analysis`、配置和架构索引 API。
 - [默认规则与配置](docs/default-rules.md)：默认分层、文件类型、内容规则、依赖方向和自定义示例。
 
-`Analyzer.Analyze(ctx)` 返回带稳定 code、可选修复建议和源码范围的结构化诊断，以及使用 `FileIdentity` 的 schema v2 架构索引和 free 文件审计清单。`tddcheck.Assert` 在一次分析中完成规则断言与文档检查/更新；`Analysis.WriteMarkdown` 和 `Analysis.CheckMarkdown` 供非测试集成使用。
+`Analyzer.Analyze(ctx)` 返回带稳定 code、源码范围和可选修复建议的结构化诊断，以及使用 `FileIdentity` 的 schema v2 架构索引和 free 文件审计清单。`tddcheck.Assert` 会在测试日志中保留 warning 诊断，并在 `FailOnWarnings` 开启时使测试失败；它同时完成规则断言与文档检查/更新。
 
 源码通过 Go package loader 加载，因此 build tags、平台文件、import alias 和 package graph 都按真实构建视图处理。`Config.IncludeTests` 可包含测试变体，`Config.StrictPackages` 可要求所有 package 完整通过类型检查。
 

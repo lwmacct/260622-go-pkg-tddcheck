@@ -9,12 +9,12 @@ import (
 	"github.com/lwmacct/260622-go-pkg-tddcheck/pkg/tddcheck/rulekit"
 )
 
-func supportViolations(file rulekit.GoFile, name fileName, maxDeclarationLines int) []Violation {
+func supportViolations(file rulekit.GoFile, name fileName, maxDeclarationLines int, initialisms map[string]string) []Violation {
 	var violations []Violation
 	for _, decl := range file.AST.Decls {
 		switch typed := decl.(type) {
 		case *ast.GenDecl:
-			violations = append(violations, declarationGenDeclViolations(file, name, "support", typed)...)
+			violations = append(violations, declarationGenDeclViolations(file, name, "support", typed, initialisms)...)
 		case *ast.FuncDecl:
 			violations = append(violations, supportFuncViolations(file.Fset, file.AbsPath, file.Layer, typed)...)
 		}
@@ -31,7 +31,7 @@ func supportDeclarationLineViolations(fileSet *token.FileSet, filename string, n
 	return []Violation{violationAt(fileSet, filename, first, fmt.Sprintf("support declarations occupy %d lines (maximum %d); move types, consts, and Err* vars to %s", lines, maxDeclarationLines, typesFilename(name)))}
 }
 
-func declarationGenDeclViolations(file rulekit.GoFile, name fileName, kind string, decl *ast.GenDecl) []Violation {
+func declarationGenDeclViolations(file rulekit.GoFile, name fileName, kind string, decl *ast.GenDecl, initialisms map[string]string) []Violation {
 	var violations []Violation
 	fileSet := file.Fset
 	filename := file.AbsPath
@@ -59,8 +59,8 @@ func declarationGenDeclViolations(file rulekit.GoFile, name fileName, kind strin
 					violations = append(violations, violationAt(fileSet, filename, typeSpec.Pos(), "service "+kind+" types must not declare persistence tags"))
 				}
 			}
-			if layer == "repository" && forbiddenRepositorySupportTypeName(name, typeSpec.Name.Name) {
-				violations = append(violations, violationAt(fileSet, filename, typeSpec.Pos(), fmt.Sprintf("repository %s type %s must start with %s", kind, typeSpec.Name.Name, upperCamelName(name.Subject))))
+			if layer == "repository" && forbiddenRepositorySupportTypeName(name, typeSpec.Name.Name, initialisms) {
+				violations = append(violations, violationAt(fileSet, filename, typeSpec.Pos(), fmt.Sprintf("repository %s type %s must start with %s", kind, typeSpec.Name.Name, upperCamelNameWithInitialisms(name.Subject, initialisms))))
 			}
 			if layer == "repository" && forbiddenRepositorySupportModelType(typeSpec) {
 				violations = append(violations, violationAt(fileSet, filename, typeSpec.Pos(), "repository "+kind+" files must not declare schema models; place Model structs and ORM tags in .schema.go"))
@@ -139,11 +139,11 @@ func supportFunctionName(name string) bool {
 		strings.HasPrefix(name, "As")
 }
 
-func forbiddenRepositorySupportTypeName(name fileName, typeName string) bool {
+func forbiddenRepositorySupportTypeName(name fileName, typeName string, initialisms map[string]string) bool {
 	if name.Namespace != "" || !startsWithUpper(typeName) {
 		return false
 	}
-	return !camelTokenPrefix(typeName, upperCamelName(name.Subject))
+	return !camelTokenPrefix(typeName, upperCamelNameWithInitialisms(name.Subject, initialisms))
 }
 
 func camelTokenPrefix(value string, prefix string) bool {

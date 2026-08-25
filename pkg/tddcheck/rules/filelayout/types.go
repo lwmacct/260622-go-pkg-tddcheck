@@ -7,12 +7,12 @@ import (
 	"github.com/lwmacct/260622-go-pkg-tddcheck/pkg/tddcheck/rulekit"
 )
 
-func typesViolations(file rulekit.GoFile, name fileName) []Violation {
+func typesViolations(file rulekit.GoFile, name fileName, initialisms map[string]string) []Violation {
 	var violations []Violation
 	for _, decl := range file.AST.Decls {
 		switch typed := decl.(type) {
 		case *ast.GenDecl:
-			violations = append(violations, declarationGenDeclViolations(file, name, "types", typed)...)
+			violations = append(violations, declarationGenDeclViolations(file, name, "types", typed, initialisms)...)
 		case *ast.FuncDecl:
 			violations = append(violations, typesFuncViolations(file, typed)...)
 		}

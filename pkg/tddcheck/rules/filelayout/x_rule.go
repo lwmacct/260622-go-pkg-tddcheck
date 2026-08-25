@@ -155,6 +155,7 @@ func layoutFileViolations(context layoutFile) []Violation {
 			Code:    RuleID + "/kind-not-allowed",
 			Message: fmt.Sprintf("%s file kind %q is not allowed", context.file.Layer, context.name.Kind),
 		})
+		return violations
 	}
 	// free is an explicit escape hatch for declaration content and identity
 	// qualifiers. The filename still must be syntactically valid and its kind
@@ -225,11 +226,11 @@ func layoutFileViolations(context layoutFile) []Violation {
 	}
 	var subjectIdentityViolations []Violation
 	if context.qualifiedKindMode() && context.name.Kind != "free" {
-		subjectIdentityViolations = inferredSubjectViolations(context.name, context.file)
+		subjectIdentityViolations = inferredSubjectViolations(context.name, context.file, context.profile.Initialisms)
 		violations = append(violations, subjectIdentityViolations...)
 	}
 	if context.qualifiedKindMode() && !context.architectureFile() && len(subjectIdentityViolations) == 0 && !strings.HasPrefix(context.name.Subject, "x_") {
-		violations = append(violations, subjectPrefixViolations(context.name, context.file)...)
+		violations = append(violations, subjectPrefixViolations(context.profile, context.name, context.file)...)
 	}
 
 	violations = append(violations, declarationViolations(context.profile, context.name, context.file, policyID)...)

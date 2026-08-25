@@ -30,8 +30,8 @@ func subjectOrderViolations(name fileName, file rulekit.GoFile) []Violation {
 	if name.Namespace != "" || (name.Kind != "support" && name.Kind != "types" && name.Kind != "dto") {
 		return nil
 	}
-	subjectTokens := strings.Split(name.Subject, "_")
-	if len(subjectTokens) == 0 {
+	subjectToken := strings.Split(name.Subject, "_")[0]
+	if subjectToken == "" {
 		return nil
 	}
 	var violations []Violation
@@ -46,31 +46,24 @@ func subjectOrderViolations(name fileName, file rulekit.GoFile) []Violation {
 				continue
 			}
 			tokens := camelTokens(typeSpec.Name.Name)
-			if subjectTokenIndex(tokens, subjectTokens) <= 0 {
+			if tokenIndex(tokens, subjectToken) <= 0 {
 				continue
 			}
 			violations = append(violations, violationAt(
 				file.Fset,
 				file.AbsPath,
 				typeSpec.Pos(),
-				fmt.Sprintf("type %s contains file subject %s after a qualifier; subject tokens must come first", typeSpec.Name.Name, upperCamelName(name.Subject)),
+				fmt.Sprintf("type %s contains file subject token %s after a qualifier; the subject token must come first", typeSpec.Name.Name, upperCamelName(subjectToken)),
 			))
 		}
 	}
 	return violations
 }
 
-func subjectTokenIndex(tokens []string, subject []string) int {
-	for start := 0; start+len(subject) <= len(tokens); start++ {
-		matched := true
-		for offset := range subject {
-			if tokens[start+offset] != subject[offset] {
-				matched = false
-				break
-			}
-		}
-		if matched {
-			return start
+func tokenIndex(tokens []string, target string) int {
+	for index, token := range tokens {
+		if token == target {
+			return index
 		}
 	}
 	return -1

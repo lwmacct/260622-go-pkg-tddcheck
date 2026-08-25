@@ -161,7 +161,16 @@ service/provider/support/types 类型不得把持久化 tag 放在这些文件�
 repository support/types 不得声明 *Model 或 ORM tag；schema model 必须放在 .schema.go
 MaxSupportDeclarationLines 大于 0 时，support 中 type、const、var 声明的 AST 行跨度累计超过门槛即要求拆到同 subject/namespace 的 .types.go；import、函数和空白行不计入
 
-SchemaInvariants 可声明必须存在的 schema 级业务不变量。例如：
+默认规则会直接检查高置信度的 schema 设计错误，不需要项目重复配置：
+
+```text
+带用户/租户作用域的 idempotency_key 不能使用全局 unique
+consumption/idempotency 记录必须将幂等 key 与作用域字段放进同一 unique group
+claim/trial 模型必须将 user_id 与 claim_date 放进同一 unique group
+package 模型必须将 user_id、source_type、source_id 放进同一 unique group
+```
+
+SchemaInvariants 仅用于项目特有、无法从命名和结构可靠推断的额外 schema 级业务不变量。例如：
 
 ```go
 SchemaInvariants: []tddcheck.SchemaInvariant{
@@ -173,7 +182,7 @@ SchemaInvariants: []tddcheck.SchemaInvariant{
 }
 ```
 
-每个 `Unique` 项必须在对应 `.schema.go` 模型的 Bun tags 中由同一个 `unique:<group>` 组合表达；单列唯一也可使用 `unique`。缺少模型或组合约束会产生 `invariants/missing-model` 或 `invariants/missing-unique-group` 错误。该规则只验证显式声明的 schema 不变量，不推断事务、行锁、幂等参数比较或并发行为。
+每个 `Unique` 项必须在对应 `.schema.go` 模型的 Bun tags 中由同一个 `unique:<group>` 组合表达；单列唯一也可使用 `unique`。缺少模型或组合约束会产生 `invariants/missing-model` 或 `invariants/missing-unique-group` 错误。自动规则还会产生 `invariants/global-idempotency-key`、`invariants/unscoped-idempotency-key`、`invariants/unscoped-claim-date` 和 `invariants/unscoped-source`。该规则只验证显式声明或高置信度推断的 schema 不变量，不推断事务、行锁、幂等参数比较或并发行为。
 ```
 
 ## 命名规则

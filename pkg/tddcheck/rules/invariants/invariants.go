@@ -54,6 +54,9 @@ func checkSnapshot(_ context.Context, snapshot *rulekit.Snapshot, _ *rulekit.Sna
 
 func violationsInSnapshot(snapshot *rulekit.Snapshot) []Violation {
 	var violations []Violation
+	for _, model := range schemaModels(snapshot) {
+		violations = append(violations, automaticViolations(model)...)
+	}
 	for _, invariant := range snapshot.Config.SchemaInvariants {
 		model, ok := findModel(snapshot, invariant)
 		if !ok {
@@ -73,6 +76,7 @@ func violationsInSnapshot(snapshot *rulekit.Snapshot) []Violation {
 type schemaModel struct {
 	file     rulekit.GoFile
 	name     string
+	table    string
 	position token.Position
 	fields   map[string]schemaField
 	unique   map[string][]string
@@ -85,8 +89,18 @@ type schemaField struct {
 }
 
 func findModel(snapshot *rulekit.Snapshot, invariant rulekit.SchemaInvariant) (schemaModel, bool) {
+	for _, model := range schemaModels(snapshot) {
+		if model.file.Identity.Subject == invariant.Subject && model.table == invariant.Table {
+			return model, true
+		}
+	}
+	return schemaModel{}, false
+}
+
+func schemaModels(snapshot *rulekit.Snapshot) []schemaModel {
+	var models []schemaModel
 	for _, file := range snapshot.Files {
-		if file.IsTest || file.Layer != "repository" || !file.IdentityOK || file.Identity.Kind != "schema" || file.Identity.Subject != invariant.Subject {
+		if file.IsTest || file.Layer != "repository" || !file.IdentityOK || file.Identity.Kind != "schema" {
 			continue
 		}
 		for _, decl := range file.AST.Decls {
@@ -100,24 +114,21 @@ func findModel(snapshot *rulekit.Snapshot, invariant rulekit.SchemaInvariant) (s
 					continue
 				}
 				structType, ok := typeSpec.Type.(*ast.StructType)
-				if !ok {
+				if !ok || tableName(structType) == "" {
 					continue
 				}
-				table := tableName(structType)
-				if table != invariant.Table {
-					continue
-				}
-				return parseModel(file, typeSpec, structType), true
+				models = append(models, parseModel(file, typeSpec, structType))
 			}
 		}
 	}
-	return schemaModel{}, false
+	return models
 }
 
 func parseModel(file rulekit.GoFile, typeSpec *ast.TypeSpec, structType *ast.StructType) schemaModel {
 	model := schemaModel{
 		file:     file,
 		name:     typeSpec.Name.Name,
+		table:    tableName(structType),
 		position: file.Fset.Position(typeSpec.Pos()),
 		fields:   map[string]schemaField{},
 		unique:   map[string][]string{},
@@ -187,6 +198,77 @@ func checkModel(model schemaModel, invariant rulekit.SchemaInvariant) []Violatio
 		violations = append(violations, Violation{File: rulekit.DisplayFilename(model.file.AbsPath), Line: line, Column: column, Code: RuleID + "/missing-unique-group", Message: message})
 	}
 	return violations
+}
+
+func automaticViolations(model schemaModel) []Violation {
+	var violations []Violation
+	if model.global["idempotency_key"] {
+		if scope := firstScopeField(model); scope != "" {
+			violations = append(violations, modelViolation(model, RuleID+"/global-idempotency-key", fmt.Sprintf("schema model %s marks idempotency_key globally unique despite %s scope; use a composite unique group", model.name, scope)))
+		}
+	}
+	if isNamedModel(model, "consumption", "idempotency") && firstScopeField(model) != "" && hasField(model, "idempotency_key") && !model.global["idempotency_key"] && !hasUniqueGroupContaining(model, "idempotency_key", firstScopeField(model)) {
+		violations = append(violations, modelViolation(model, RuleID+"/unscoped-idempotency-key", fmt.Sprintf("schema model %s must scope idempotency_key with %s in one unique group", model.name, firstScopeField(model))))
+	}
+	if isNamedModel(model, "claim", "trial") && hasField(model, "user_id") && hasField(model, "claim_date") && !hasUniqueGroupContaining(model, "user_id", "claim_date") {
+		violations = append(violations, modelViolation(model, RuleID+"/unscoped-claim-date", fmt.Sprintf("schema model %s must define one unique group covering user_id and claim_date", model.name)))
+	}
+	if isNamedModel(model, "package") && hasField(model, "user_id") && hasField(model, "source_type") && hasField(model, "source_id") && !hasUniqueGroupContaining(model, "user_id", "source_type", "source_id") {
+		violations = append(violations, modelViolation(model, RuleID+"/unscoped-source", fmt.Sprintf("schema model %s must define one unique group covering user_id, source_type, and source_id", model.name)))
+	}
+	return violations
+}
+
+func modelViolation(model schemaModel, code string, message string) Violation {
+	line, column := model.position.Line, model.position.Column
+	return Violation{File: rulekit.DisplayFilename(model.file.AbsPath), Line: line, Column: column, Code: code, Message: message}
+}
+
+func hasField(model schemaModel, column string) bool {
+	_, ok := model.fields[column]
+	return ok
+}
+
+func firstScopeField(model schemaModel) string {
+	for _, column := range []string{"user_id", "tenant_id", "account_id", "workspace_id", "organization_id", "owner_id"} {
+		if hasField(model, column) {
+			return column
+		}
+	}
+	return ""
+}
+
+func hasUniqueGroupContaining(model schemaModel, columns ...string) bool {
+	for _, group := range model.unique {
+		found := make(map[string]bool, len(group))
+		for _, column := range group {
+			found[column] = true
+		}
+		if len(found) != len(group) {
+			continue
+		}
+		matched := true
+		for _, column := range columns {
+			if !found[column] {
+				matched = false
+				break
+			}
+		}
+		if matched {
+			return true
+		}
+	}
+	return false
+}
+
+func isNamedModel(model schemaModel, tokens ...string) bool {
+	value := strings.ToLower(model.name + " " + model.table)
+	for _, token := range tokens {
+		if strings.Contains(value, token) {
+			return true
+		}
+	}
+	return false
 }
 
 func tableName(structType *ast.StructType) string {

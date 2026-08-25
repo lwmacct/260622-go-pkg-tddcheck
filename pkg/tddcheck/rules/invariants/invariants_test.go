@@ -10,7 +10,7 @@ import (
 	"github.com/lwmacct/260622-go-pkg-tddcheck/pkg/tddcheck/rulekit"
 )
 
-func TestCheckAcceptsConfiguredCompositeUniqueGroup(t *testing.T) {
+func TestCheckAcceptsAutomaticCompositeUniqueGroup(t *testing.T) {
 	root := fixture(t, `package repository
 
 import "github.com/uptrace/bun"
@@ -22,13 +22,7 @@ type ResourceLedgerConsumptionModel struct {
 }
 `)
 
-	violations, err := Check(context.Background(), filepath.Join(root, "internal"), rulekit.Config{
-		SchemaInvariants: []rulekit.SchemaInvariant{{
-			Subject: "resource_ledger",
-			Table:   "resource_consumptions",
-			Unique:  [][]string{{"user_id", "idempotency_key"}},
-		}},
-	})
+	violations, err := Check(context.Background(), filepath.Join(root, "internal"), rulekit.Config{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -37,7 +31,7 @@ type ResourceLedgerConsumptionModel struct {
 	}
 }
 
-func TestCheckRejectsGlobalUniqueWhenCompositeIsRequired(t *testing.T) {
+func TestCheckRejectsGlobalUniqueWithoutConfiguration(t *testing.T) {
 	root := fixture(t, `package repository
 
 import "github.com/uptrace/bun"
@@ -49,18 +43,53 @@ type ResourceLedgerConsumptionModel struct {
 }
 `)
 
-	violations, err := Check(context.Background(), filepath.Join(root, "internal"), rulekit.Config{
-		SchemaInvariants: []rulekit.SchemaInvariant{{
-			Subject: "resource_ledger",
-			Table:   "resource_consumptions",
-			Unique:  [][]string{{"user_id", "idempotency_key"}},
-		}},
-	})
+	violations, err := Check(context.Background(), filepath.Join(root, "internal"), rulekit.Config{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(violations) != 1 || !strings.Contains(violations[0].Message, "global unique") {
+	if len(violations) != 1 || !strings.Contains(violations[0].Message, "globally unique") {
 		t.Fatalf("expected composite constraint violation, got %#v", violations)
+	}
+}
+
+func TestCheckRejectsUnscopedTrialClaimWithoutConfiguration(t *testing.T) {
+	root := fixture(t, `package repository
+
+import "github.com/uptrace/bun"
+
+type ResourceTrialClaimModel struct {
+	bun.BaseModel `+"`bun:\"table:resource_trial_claims\"`"+`
+	UserID string `+"`bun:\"user_id,notnull\"`"+`
+	ClaimDate string `+"`bun:\"claim_date,notnull\"`"+`
+}
+`)
+	violations, err := Check(context.Background(), filepath.Join(root, "internal"), rulekit.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(violations) != 1 || !strings.Contains(violations[0].Message, "user_id and claim_date") {
+		t.Fatalf("expected trial claim constraint violation, got %#v", violations)
+	}
+}
+
+func TestCheckRejectsUnscopedPackageSourceWithoutConfiguration(t *testing.T) {
+	root := fixture(t, `package repository
+
+import "github.com/uptrace/bun"
+
+type ResourcePackageModel struct {
+	bun.BaseModel `+"`bun:\"table:resource_packages\"`"+`
+	UserID string `+"`bun:\"user_id,notnull\"`"+`
+	SourceType string `+"`bun:\"source_type,notnull\"`"+`
+	SourceID string `+"`bun:\"source_id,nullzero\"`"+`
+}
+`)
+	violations, err := Check(context.Background(), filepath.Join(root, "internal"), rulekit.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(violations) != 1 || !strings.Contains(violations[0].Message, "user_id, source_type, and source_id") {
+		t.Fatalf("expected package source constraint violation, got %#v", violations)
 	}
 }
 

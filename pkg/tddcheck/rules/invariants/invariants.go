@@ -133,18 +133,19 @@ func parseModel(file rulekit.GoFile, typeSpec *ast.TypeSpec, structType *ast.Str
 			column = strings.TrimSpace(parts[0])
 		}
 		for _, name := range field.Names {
-			if column == "" {
-				column = snakeName(name.Name)
+			fieldColumn := column
+			if fieldColumn == "" {
+				fieldColumn = snakeName(name.Name)
 			}
 			position := file.Fset.Position(field.Pos())
-			model.fields[column] = schemaField{line: position.Line, column: position.Column}
+			model.fields[fieldColumn] = schemaField{line: position.Line, column: position.Column}
 			for _, option := range parts[1:] {
 				switch {
 				case option == "unique":
-					model.global[column] = true
+					model.global[fieldColumn] = true
 				case strings.HasPrefix(option, "unique:"):
 					group := strings.TrimPrefix(option, "unique:")
-					model.unique[group] = append(model.unique[group], column)
+					model.unique[group] = append(model.unique[group], fieldColumn)
 				}
 			}
 		}

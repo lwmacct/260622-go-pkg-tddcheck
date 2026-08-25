@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestViolationsRequireFileSubjectBeforeTypeQualifiers(t *testing.T) {
+func TestViolationsRequireSubjectPrefixForExportedTypes(t *testing.T) {
 	root := fixture(t, map[string]string{
 		"internal/service/api_key.service.go": `package service
 type APIKeyService struct{}
@@ -15,7 +15,6 @@ func NewAPIKeyService() *APIKeyService { return &APIKeyService{} }
 type APIKey struct{}
 type APIKeyOwnerCreateInput struct{}
 type UserAPIKeyCreateInput struct{}
-type AudienceLabel struct{}
 type apiKeyRuntime struct{}
 `,
 		"internal/handler/api_key.dto.go": `package handler
@@ -49,7 +48,6 @@ func NewResourcePackageService() *ResourcePackageService { return &ResourcePacka
 `,
 		"internal/service/resource_package.types.go": `package service
 type ResourcePackage struct{}
-type ResourceLedger struct{}
 type UserResourceLedgerListInput struct{}
 `,
 	})
@@ -58,12 +56,12 @@ type UserResourceLedgerListInput struct{}
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertViolationContains(t, violations, "type UserAPIKeyCreateInput contains file subject token API after a qualifier")
-	assertViolationContains(t, violations, "type UserAPIKeyDTO contains file subject token API after a qualifier")
-	assertViolationContains(t, violations, "type CreateUserInput contains file subject token User after a qualifier")
-	assertViolationContains(t, violations, "type UserUsageChargeListInput contains file subject token Usage after a qualifier")
-	assertViolationContains(t, violations, "type UserUsageChargeListInputDTO contains file subject token Usage after a qualifier")
-	assertViolationContains(t, violations, "type UserResourceLedgerListInput contains file subject token Resource after a qualifier")
+	assertViolationContains(t, violations, "subject-specific declaration UserAPIKeyCreateInput must start with APIKey")
+	assertViolationContains(t, violations, "subject-specific declaration UserAPIKeyDTO must start with APIKey")
+	assertViolationContains(t, violations, "subject-specific declaration CreateUserInput must start with User")
+	assertViolationContains(t, violations, "subject-specific declaration UserUsageChargeListInput must start with Usage")
+	assertViolationContains(t, violations, "subject-specific declaration UserUsageChargeListInputDTO must start with Usage")
+	assertViolationContains(t, violations, "subject-specific declaration UserResourceLedgerListInput must start with ResourcePackage")
 	if len(violations) != 6 {
 		t.Fatalf("expected six subject-order violations, got %#v", violations)
 	}

@@ -27,10 +27,12 @@
 // # Configuration
 //
 // The zero [Config] uses [DefaultConfig]. Nil collections inherit defaults;
-// non-nil empty collections disable them. Configuration is validated and deep
-// copied by [New], so callers may safely reuse or mutate their input afterward.
-// IncludeTests loads test variants, BuildFlags configures the Go build, and
-// StrictPackages rejects incomplete package graphs.
+// non-nil empty collections disable optional entries, while required per-layer
+// maps must still cover every configured layout layer. Configuration is
+// validated and deep copied by [New], so callers may safely reuse or mutate
+// their input afterward. IncludeTests loads test variants, BuildFlags
+// configures the Go build, and StrictPackages rejects incomplete package
+// graphs.
 //
 // # Extensibility
 //

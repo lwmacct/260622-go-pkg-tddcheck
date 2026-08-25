@@ -49,19 +49,6 @@ type Config struct {
 	// MaxSupportDeclarationLines limits the total lines occupied by type, const,
 	// and var declarations in a support file. Zero disables the limit.
 	MaxSupportDeclarationLines int `json:"maxSupportDeclarationLines,omitempty"`
-	// SchemaInvariants declares database constraints that must be represented by
-	// repository schema model tags. The rules are intentionally explicit because
-	// business cardinality cannot be inferred reliably from syntax alone.
-	SchemaInvariants []SchemaInvariant `json:"schemaInvariants,omitempty"`
-}
-
-// SchemaInvariant describes constraints expected on one repository schema
-// model. Each Unique entry is a set of database columns that must share one
-// Bun unique group (or be a single-column unique field).
-type SchemaInvariant struct {
-	Subject string     `json:"subject"`
-	Table   string     `json:"table"`
-	Unique  [][]string `json:"unique,omitempty"`
 }
 
 type Profile struct {
@@ -259,7 +246,6 @@ func (c Config) Compile() (Config, error) {
 	c.EscapedSubjectSuffixes = slices.Clone(c.EscapedSubjectSuffixes)
 	c.ForbiddenWeakSubjects = slices.Clone(c.ForbiddenWeakSubjects)
 	c.PublicTypeBoundarySuffixes = slices.Clone(c.PublicTypeBoundarySuffixes)
-	c.SchemaInvariants = cloneSchemaInvariants(c.SchemaInvariants)
 	return c, nil
 }
 
@@ -275,9 +261,6 @@ func (c Config) Validate() error {
 	}
 	if c.MaxSupportDeclarationLines < 0 {
 		return fmt.Errorf("max support declaration lines must not be negative")
-	}
-	if err := validateSchemaInvariants(c.SchemaInvariants); err != nil {
-		return err
 	}
 	dependencyLayers := sliceSet(c.DependencyLayerDirs)
 	for _, layer := range c.LayerDirs {
@@ -409,54 +392,6 @@ func cloneStringMaps(values map[string]map[string]string) map[string]map[string]
 		result[key] = maps.Clone(value)
 	}
 	return result
-}
-
-func cloneSchemaInvariants(values []SchemaInvariant) []SchemaInvariant {
-	result := make([]SchemaInvariant, len(values))
-	for index, value := range values {
-		result[index] = SchemaInvariant{
-			Subject: value.Subject,
-			Table:   value.Table,
-			Unique:  make([][]string, len(value.Unique)),
-		}
-		for groupIndex, columns := range value.Unique {
-			result[index].Unique[groupIndex] = slices.Clone(columns)
-		}
-	}
-	return result
-}
-
-func validateSchemaInvariants(values []SchemaInvariant) error {
-	seen := map[string]bool{}
-	for _, invariant := range values {
-		if !validSnakeComponent(invariant.Subject) {
-			return fmt.Errorf("schema invariant subject %q must be a snake_case name", invariant.Subject)
-		}
-		if !validSnakeComponent(invariant.Table) {
-			return fmt.Errorf("schema invariant table %q must be a snake_case name", invariant.Table)
-		}
-		key := invariant.Subject + "\x00" + invariant.Table
-		if seen[key] {
-			return fmt.Errorf("duplicate schema invariant for subject %q and table %q", invariant.Subject, invariant.Table)
-		}
-		seen[key] = true
-		for _, columns := range invariant.Unique {
-			if len(columns) == 0 {
-				return fmt.Errorf("schema invariant %q unique group must not be empty", invariant.Table)
-			}
-			columnSet := map[string]bool{}
-			for _, column := range columns {
-				if !validSnakeComponent(column) {
-					return fmt.Errorf("schema invariant %q column %q must be a snake_case name", invariant.Table, column)
-				}
-				if columnSet[column] {
-					return fmt.Errorf("schema invariant %q unique group repeats column %q", invariant.Table, column)
-				}
-				columnSet[column] = true
-			}
-		}
-	}
-	return nil
 }
 
 func (c Config) Profile() Profile {

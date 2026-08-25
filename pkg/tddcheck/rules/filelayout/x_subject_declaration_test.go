@@ -35,8 +35,8 @@ type AudienceLabelValueDTO struct{}
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertViolationContains(t, violations, `type AudienceLabel belongs to subject "audience_label", but is declared in subject "api_key"`)
-	assertViolationContains(t, violations, `type AudienceLabelDTO belongs to subject "audience_label", but is declared in subject "api_key"`)
+	assertViolationContains(t, violations, "subject-specific declaration AudienceLabel must start with APIKey")
+	assertViolationContains(t, violations, "subject-specific declaration AudienceLabelDTO must start with APIKey")
 }
 
 func TestViolationsAllowsCrossSubjectReferencesAndSharedDeclarations(t *testing.T) {
@@ -64,6 +64,6 @@ type AudienceLabelReference struct{}
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertNoViolationContains(t, violations, `type APIKey belongs to subject`)
-	assertNoViolationContains(t, violations, `type AudienceLabelReference belongs to subject`)
+	assertNoViolationContains(t, violations, "subject-specific declaration APIKey")
+	assertNoViolationContains(t, violations, "subject-specific declaration AudienceLabelReference")
 }

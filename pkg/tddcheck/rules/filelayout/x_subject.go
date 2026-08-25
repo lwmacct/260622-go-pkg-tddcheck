@@ -26,47 +26,94 @@ func inferredSubjectViolations(name fileName, file rulekit.GoFile) []Violation {
 	return nil
 }
 
-func subjectOrderViolations(name fileName, file rulekit.GoFile) []Violation {
-	if name.Namespace != "" || (name.Kind != "support" && name.Kind != "types" && name.Kind != "dto") {
+var subjectPrefixKinds = map[string]bool{
+	"commands": true,
+	"dto":      true,
+	"mapper":   true,
+	"provider": true,
+	"support":  true,
+	"types":    true,
+}
+
+func subjectPrefixViolations(name fileName, file rulekit.GoFile) []Violation {
+	if !subjectPrefixKinds[name.Kind] {
 		return nil
 	}
-	subjectToken := strings.Split(name.Subject, "_")[0]
-	if subjectToken == "" {
-		return nil
-	}
+	expected := upperCamelName(name.Subject)
 	var violations []Violation
-	for _, decl := range file.AST.Decls {
-		genDecl, ok := decl.(*ast.GenDecl)
-		if !ok || genDecl.Tok != token.TYPE {
-			continue
-		}
-		for _, spec := range genDecl.Specs {
-			typeSpec, ok := spec.(*ast.TypeSpec)
-			if !ok || !ast.IsExported(typeSpec.Name.Name) {
+	for _, declaration := range file.AST.Decls {
+		switch typed := declaration.(type) {
+		case *ast.GenDecl:
+			// Repository support/types policies already enforce exported type
+			// ownership and provide more specific model diagnostics.
+			if typed.Tok == token.TYPE && file.Layer != "repository" {
+				for _, spec := range typed.Specs {
+					typeSpec, ok := spec.(*ast.TypeSpec)
+					if !ok || !ast.IsExported(typeSpec.Name.Name) || camelTokenPrefix(typeSpec.Name.Name, expected) {
+						continue
+					}
+					violations = append(violations, subjectPrefixViolation(file, typeSpec.Pos(), typeSpec.Name.Name, expected))
+				}
+			}
+			if (typed.Tok == token.CONST || typed.Tok == token.VAR) && (name.Kind == "support" || name.Kind == "types") {
+				for _, spec := range typed.Specs {
+					valueSpec, ok := spec.(*ast.ValueSpec)
+					if !ok {
+						continue
+					}
+					for _, identifier := range valueSpec.Names {
+						if ast.IsExported(identifier.Name) && !subjectValuePrefix(identifier.Name, expected, typed.Tok) {
+							want := expected
+							if typed.Tok == token.VAR && strings.HasPrefix(identifier.Name, "Err") {
+								want = "Err" + expected
+							}
+							violations = append(violations, subjectPrefixViolation(file, identifier.Pos(), identifier.Name, want))
+						}
+					}
+				}
+			}
+		case *ast.FuncDecl:
+			if name.Kind == "support" && typed.Recv == nil && ast.IsExported(typed.Name.Name) {
+				if action, ok := supportAction(typed.Name.Name); ok && !camelTokenPrefix(strings.TrimPrefix(typed.Name.Name, action), expected) {
+					violations = append(violations, subjectPrefixViolation(file, typed.Name.Pos(), typed.Name.Name, action+expected))
+				}
+			}
+			if name.Kind != "mapper" || typed.Recv != nil || !ast.IsExported(typed.Name.Name) || !strings.HasPrefix(typed.Name.Name, "To") {
 				continue
 			}
-			tokens := camelTokens(typeSpec.Name.Name)
-			if tokenIndex(tokens, subjectToken) <= 0 {
-				continue
+			if !camelTokenPrefix(strings.TrimPrefix(typed.Name.Name, "To"), expected) {
+				violations = append(violations, subjectPrefixViolation(file, typed.Name.Pos(), typed.Name.Name, "To"+expected))
 			}
-			violations = append(violations, violationAt(
-				file.Fset,
-				file.AbsPath,
-				typeSpec.Pos(),
-				fmt.Sprintf("type %s contains file subject token %s after a qualifier; the subject token must come first", typeSpec.Name.Name, upperCamelName(subjectToken)),
-			))
 		}
 	}
 	return violations
 }
 
-func tokenIndex(tokens []string, target string) int {
-	for index, token := range tokens {
-		if token == target {
-			return index
+func supportAction(identifier string) (string, bool) {
+	for _, action := range []string{"Wrap", "Is", "As"} {
+		if strings.HasPrefix(identifier, action) {
+			return action, true
 		}
 	}
-	return -1
+	return "", false
+}
+
+func subjectValuePrefix(identifier string, expected string, declaration token.Token) bool {
+	if camelTokenPrefix(identifier, expected) {
+		return true
+	}
+	return declaration == token.VAR && strings.HasPrefix(identifier, "Err") && camelTokenPrefix(strings.TrimPrefix(identifier, "Err"), expected)
+}
+
+func subjectPrefixViolation(file rulekit.GoFile, position token.Pos, identifier string, expected string) Violation {
+	violation := violationAt(
+		file.Fset,
+		file.AbsPath,
+		position,
+		fmt.Sprintf("subject-specific declaration %s must start with %s; put shared declarations in x.shared.*", identifier, expected),
+	)
+	violation.Code = RuleID + "/subject-ownership"
+	return violation
 }
 
 func fileIdentifiers(parsedFile *ast.File) []string {

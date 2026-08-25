@@ -14,7 +14,6 @@ import (
 
 	"github.com/lwmacct/260622-go-pkg-tddcheck/pkg/tddcheck/rulekit"
 	"github.com/lwmacct/260622-go-pkg-tddcheck/pkg/tddcheck/rules/filelayout"
-	"github.com/lwmacct/260622-go-pkg-tddcheck/pkg/tddcheck/rules/invariants"
 	"github.com/lwmacct/260622-go-pkg-tddcheck/pkg/tddcheck/rules/layerdeps"
 )
 
@@ -55,7 +54,6 @@ func New(options Options, registrars ...func(*Engine)) (*Analyzer, error) {
 	}
 	var engine rulekit.Engine
 	filelayout.Register(&engine)
-	invariants.Register(&engine)
 	layerdeps.Register(&engine)
 	for _, register := range registrars {
 		if register != nil {

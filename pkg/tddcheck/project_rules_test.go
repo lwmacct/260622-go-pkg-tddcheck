@@ -87,6 +87,31 @@ func NewStore() *Store { return &Store{} }
 	}
 }
 
+func TestProjectAnalyzeReportsFreeFilesAsWarnings(t *testing.T) {
+	root := fixture(t, map[string]string{
+		"internal/service/device.free.go": `package service
+func BuildDevice() {}
+`,
+	})
+
+	analysis, err := analyzeRoot(filepath.Join(root, "internal"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !analysis.Passed() {
+		t.Fatal("free-file warnings must not fail analysis")
+	}
+	if len(analysis.Diagnostics) != 1 || analysis.Diagnostics[0].Code != "filelayout/free-file" || analysis.Diagnostics[0].Severity != SeverityWarning {
+		t.Fatalf("expected free-file warning, got %#v", analysis.Diagnostics)
+	}
+	if text := analysis.Text(); !strings.Contains(text, "tddcheck: passed") || !strings.Contains(text, "[filelayout/free-file]") {
+		t.Fatalf("expected warning in passing text report, got:\n%s", text)
+	}
+	if len(analysis.FreeFiles) != 1 || analysis.FreeFiles[0].File != "internal/service/device.free.go" {
+		t.Fatalf("expected free-file inventory, got %#v", analysis.FreeFiles)
+	}
+}
+
 func TestProjectAnalyzeReportsViolations(t *testing.T) {
 	root := fixture(t, map[string]string{
 		"internal/handler/device.go": `package handler

@@ -89,6 +89,51 @@ type SchemaDef struct{}
 	}
 }
 
+func TestViolationsChecksRepositorySupportValueSubject(t *testing.T) {
+	root := fixture(t, map[string]string{
+		"internal/repository/device.support.go": `package repository
+import "errors"
+const DeviceTable = "devices"
+const Table = "devices"
+var ErrDeviceMissing = errors.New("missing")
+var ErrMissing = errors.New("missing")
+`,
+	})
+
+	violations, err := checkRoot(filepath.Join(root, "internal"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertViolationContains(t, violations, "subject-specific declaration Table must start with Device")
+	assertViolationContains(t, violations, "subject-specific declaration ErrMissing must start with ErrDevice")
+	assertNoViolationContains(t, violations, "subject-specific declaration DeviceTable")
+	assertNoViolationContains(t, violations, "subject-specific declaration ErrDeviceMissing")
+}
+
+func TestViolationsChecksSupportFunctionSubject(t *testing.T) {
+	root := fixture(t, map[string]string{
+		"internal/service/device.service.go": `package service
+type DeviceService struct{}
+func NewDeviceService() *DeviceService { return &DeviceService{} }
+`,
+		"internal/service/device.support.go": `package service
+func WrapDeviceError() error { return nil }
+func IsDeviceError() bool { return false }
+func AsDeviceError() error { return nil }
+func WrapUserError() error { return nil }
+`,
+	})
+
+	violations, err := checkRoot(filepath.Join(root, "internal"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertViolationContains(t, violations, "subject-specific declaration WrapUserError must start with WrapDevice")
+	assertNoViolationContains(t, violations, "subject-specific declaration WrapDeviceError")
+	assertNoViolationContains(t, violations, "subject-specific declaration IsDeviceError")
+	assertNoViolationContains(t, violations, "subject-specific declaration AsDeviceError")
+}
+
 func TestViolationsLimitsSupportDeclarationLines(t *testing.T) {
 	root := fixture(t, map[string]string{
 		"internal/service/device.support.go": `package service

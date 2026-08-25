@@ -12,12 +12,13 @@ import (
 const RuleID = "filelayout"
 
 type Violation struct {
-	File    string
-	Line    int
-	Column  int
-	Code    string
-	Message string
-	Fix     *rulekit.SuggestedFix
+	File     string
+	Line     int
+	Column   int
+	Code     string
+	Severity rulekit.Severity
+	Message  string
+	Fix      *rulekit.SuggestedFix
 }
 
 func Register(engine *rulekit.Engine) {
@@ -52,7 +53,6 @@ func checkFile(_ context.Context, snapshot *rulekit.Snapshot, file rulekit.GoFil
 
 func checkSnapshot(_ context.Context, _ *rulekit.Snapshot, snapshot *rulekit.Snapshot) ([]rulekit.Diagnostic, error) {
 	values := subjectAnchorViolations(snapshot)
-	values = append(values, subjectDeclarationOwnershipViolations(snapshot)...)
 	values = append(values, identityCollisionViolations(snapshot)...)
 	values = append(values, publicTypeBoundaryViolations(snapshot)...)
 	return diagnostics(values), nil
@@ -66,7 +66,11 @@ func diagnostics(values []Violation) []rulekit.Diagnostic {
 		if code == "" {
 			code = RuleID + "/policy"
 		}
-		diagnostic := rulekit.NewDiagnostic(RuleID, code, rulekit.SeverityError, value.Message, position, position)
+		severity := value.Severity
+		if severity == "" {
+			severity = rulekit.SeverityError
+		}
+		diagnostic := rulekit.NewDiagnostic(RuleID, code, severity, value.Message, position, position)
 		diagnostic.SuggestedFix = value.Fix
 		diagnostics = append(diagnostics, diagnostic)
 	}
@@ -85,7 +89,6 @@ func violationsInSnapshot(snapshot *rulekit.Snapshot) []Violation {
 		violations = append(violations, violationsInFile(snapshot.Profile, file)...)
 	}
 	violations = append(violations, subjectAnchorViolations(snapshot)...)
-	violations = append(violations, subjectDeclarationOwnershipViolations(snapshot)...)
 	violations = append(violations, identityCollisionViolations(snapshot)...)
 	violations = append(violations, publicTypeBoundaryViolations(snapshot)...)
 	return violations
@@ -143,6 +146,13 @@ func layoutFileViolations(context layoutFile) []Violation {
 	// qualifiers. The filename still must be syntactically valid and its kind
 	// must be enabled by the layer profile.
 	if context.name.Kind == "free" {
+		violations = append(violations, Violation{
+			File:     rulekit.DisplayFilename(context.file.AbsPath),
+			Line:     1,
+			Code:     RuleID + "/free-file",
+			Severity: rulekit.SeverityWarning,
+			Message:  "free files bypass declaration and subject ownership checks; classify this file when possible",
+		})
 		return violations
 	}
 	if context.qualifiedKindMode() && !context.architectureFile() && rulekit.StringIn(context.name.Subject, context.profile.ForbiddenWeakSubjects) {
@@ -187,11 +197,13 @@ func layoutFileViolations(context layoutFile) []Violation {
 			Message: fmt.Sprintf("architecture namespace %q is not allowed in %s", context.name.Namespace, context.file.Layer),
 		})
 	}
+	var subjectIdentityViolations []Violation
 	if context.qualifiedKindMode() && context.name.Kind != "free" {
-		violations = append(violations, inferredSubjectViolations(context.name, context.file)...)
+		subjectIdentityViolations = inferredSubjectViolations(context.name, context.file)
+		violations = append(violations, subjectIdentityViolations...)
 	}
-	if context.qualifiedKindMode() {
-		violations = append(violations, subjectOrderViolations(context.name, context.file)...)
+	if context.qualifiedKindMode() && !context.architectureFile() && len(subjectIdentityViolations) == 0 && !strings.HasPrefix(context.name.Subject, "x_") {
+		violations = append(violations, subjectPrefixViolations(context.name, context.file)...)
 	}
 
 	violations = append(violations, declarationViolations(context.profile, context.name, context.file, policyID)...)

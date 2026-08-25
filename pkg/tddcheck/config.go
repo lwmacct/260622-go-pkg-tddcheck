@@ -5,7 +5,6 @@ import "github.com/lwmacct/260622-go-pkg-tddcheck/pkg/tddcheck/rulekit"
 // Config controls project scanning, file-layout rules, and layer dependencies.
 // Nil slice and map fields inherit their values from [DefaultConfig].
 type Config = rulekit.Config
-type SchemaInvariant = rulekit.SchemaInvariant
 
 // LayerDependencyRule forbids imports from a matching source layer and path to
 // a matching target layer and path.

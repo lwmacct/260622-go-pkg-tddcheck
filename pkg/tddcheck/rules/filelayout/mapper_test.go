@@ -30,3 +30,19 @@ func BuildDevice() {}
 	assertViolationContains(t, violations, "mapper function FromDevice must start with To")
 	assertViolationContains(t, violations, "mapper function BuildDevice must start with To")
 }
+
+func TestViolationsRequireMapperSubjectPrefix(t *testing.T) {
+	root := fixture(t, map[string]string{
+		"internal/service/device.mapper.go": `package service
+func ToRepositoryDevice() {}
+func ToDeviceRow() {}
+`,
+	})
+
+	violations, err := checkRoot(filepath.Join(root, "internal"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertViolationContains(t, violations, "subject-specific declaration ToRepositoryDevice must start with ToDevice")
+	assertNoViolationContains(t, violations, "subject-specific declaration ToDeviceRow")
+}

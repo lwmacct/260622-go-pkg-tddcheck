@@ -51,10 +51,10 @@ func RegisterPublicDeviceGroups() {}
 func (h deviceGroupHandler) list() {}
 `,
 		"internal/service/device.commands.go": `package service
-type CreateDeviceRequest struct{}
-type BatchDeviceResponse struct{}
-type BatchDeviceItemResult struct{}
-type BatchUpdateDeviceItem struct{}
+type DeviceCreateRequest struct{}
+type DeviceBatchResponse struct{}
+type DeviceBatchItemResult struct{}
+type DeviceBatchUpdateItem struct{}
 `,
 		"internal/service/device.service.go": `package service
 type DeviceService struct{}
@@ -135,7 +135,7 @@ func helper() {}
 func TestViolationsRejectsServiceSubjectWithoutServiceFile(t *testing.T) {
 	root := fixture(t, map[string]string{
 		"internal/service/node_ws_tunnel.commands.go": `package service
-type ValidateNodeWSTunnelTargetRequest struct{}
+type NodeWSTunnelValidateTargetRequest struct{}
 `,
 		"internal/service/node_ws_tunnel.support.go": `package service
 func AsNodeWSTunnelTargetValidation() error { return nil }
@@ -220,8 +220,13 @@ func BuildWhatever() {}
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(violations) != 0 {
-		t.Fatalf("expected no violations, got %#v", violations)
+	if len(violations) != 5 {
+		t.Fatalf("expected one warning per free file, got %#v", violations)
+	}
+	for _, violation := range violations {
+		if violation.Code != "filelayout/free-file" || violation.Severity != rulekit.SeverityWarning {
+			t.Fatalf("expected free-file warning, got %#v", violation)
+		}
 	}
 }
 
@@ -236,7 +241,7 @@ func BuildStore() {}
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(violations) != 0 {
-		t.Fatalf("expected no violations, got %#v", violations)
+	if len(violations) != 1 || violations[0].Code != "filelayout/free-file" || violations[0].Severity != rulekit.SeverityWarning {
+		t.Fatalf("expected free-file warning, got %#v", violations)
 	}
 }

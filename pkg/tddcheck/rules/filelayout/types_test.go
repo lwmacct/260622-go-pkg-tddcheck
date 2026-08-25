@@ -51,3 +51,28 @@ func (Device) Unwrap() error { return nil }
 	assertViolationContains(t, violations, "types files must only declare types, consts, Err* vars, and Error/Unwrap methods")
 	assertViolationContains(t, violations, "types Error/Unwrap methods must use receivers that implement error")
 }
+
+func TestViolationsRequireTypesValuesToBelongToSubject(t *testing.T) {
+	root := fixture(t, map[string]string{
+		"internal/service/device.service.go": `package service
+type DeviceService struct{}
+func NewDeviceService() *DeviceService { return &DeviceService{} }
+`,
+		"internal/service/device.types.go": `package service
+import "errors"
+const DeviceStatusActive = "active"
+const StatusDisabled = "disabled"
+var ErrDeviceUnavailable = errors.New("unavailable")
+var ErrUnavailable = errors.New("unavailable")
+`,
+	})
+
+	violations, err := checkRoot(filepath.Join(root, "internal"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertViolationContains(t, violations, "subject-specific declaration StatusDisabled must start with Device")
+	assertViolationContains(t, violations, "subject-specific declaration ErrUnavailable must start with ErrDevice")
+	assertNoViolationContains(t, violations, "subject-specific declaration DeviceStatusActive")
+	assertNoViolationContains(t, violations, "subject-specific declaration ErrDeviceUnavailable")
+}

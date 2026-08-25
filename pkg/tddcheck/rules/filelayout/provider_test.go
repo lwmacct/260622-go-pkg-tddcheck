@@ -102,3 +102,23 @@ func NewImageCaptchaProvider() string { return "" }
 	}
 	assertViolationContains(t, violations, "provider constructors must return ImageCaptchaProvider")
 }
+
+func TestProviderFilesRequireSubjectPrefixForExportedTypes(t *testing.T) {
+	root := fixture(t, map[string]string{
+		"internal/service/image_captcha.service.go": `package service
+type ImageCaptchaService struct{}
+func NewImageCaptchaService() *ImageCaptchaService { return &ImageCaptchaService{} }
+`,
+		"internal/service/image_captcha.provider.go": `package service
+type ImageCaptchaProvider struct{}
+type RemoteOptions struct{}
+func NewImageCaptchaProvider() *ImageCaptchaProvider { return &ImageCaptchaProvider{} }
+`,
+	})
+
+	violations, err := checkRoot(filepath.Join(root, "internal"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertViolationContains(t, violations, "subject-specific declaration RemoteOptions must start with ImageCaptcha")
+}

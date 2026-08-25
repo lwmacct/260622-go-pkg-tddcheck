@@ -53,11 +53,16 @@ func (a Analysis) ArchitectureIndex() Index {
 }
 
 func (a Analysis) Text() string {
-	if a.Passed() {
+	passed := a.Passed()
+	if passed && len(a.Diagnostics) == 0 {
 		return "tddcheck: passed"
 	}
 	lines := make([]string, 0, len(a.Diagnostics)+len(a.LoadErrors)+1)
-	lines = append(lines, "tddcheck: failed")
+	if passed {
+		lines = append(lines, "tddcheck: passed")
+	} else {
+		lines = append(lines, "tddcheck: failed")
+	}
 	for _, loadError := range a.LoadErrors {
 		position := loadError.PackagePath
 		if loadError.Position != "" {

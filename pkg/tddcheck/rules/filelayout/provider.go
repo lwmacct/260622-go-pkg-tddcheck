@@ -4,25 +4,27 @@ import (
 	"go/ast"
 	"go/token"
 	"strings"
+
+	"github.com/lwmacct/260622-go-pkg-tddcheck/pkg/tddcheck/rulekit"
 )
 
-func providerViolations(fileSet *token.FileSet, filename string, name fileName, parsedFile *ast.File) []Violation {
+func providerViolations(file rulekit.GoFile, name fileName) []Violation {
 	var violations []Violation
 	expectedProviderType := upperCamelName(name.Qualifier()) + "Provider"
 	providerTypeFound := false
-	for _, decl := range parsedFile.Decls {
+	for _, decl := range file.AST.Decls {
 		switch typed := decl.(type) {
 		case *ast.GenDecl:
-			fileViolations, found := providerGenDeclViolations(fileSet, filename, typed, expectedProviderType)
+			fileViolations, found := providerGenDeclViolations(file, typed, expectedProviderType)
 			violations = append(violations, fileViolations...)
 			providerTypeFound = providerTypeFound || found
 		case *ast.FuncDecl:
-			violations = append(violations, providerFuncViolations(fileSet, filename, typed, expectedProviderType)...)
+			violations = append(violations, providerFuncViolations(file.Fset, file.AbsPath, typed, expectedProviderType)...)
 		}
 	}
 	if !providerTypeFound {
 		violations = append(violations, Violation{
-			File:    displayFilename(filename),
+			File:    displayFilename(file.AbsPath),
 			Line:    1,
 			Message: "provider files must declare " + expectedProviderType,
 		})
@@ -30,15 +32,15 @@ func providerViolations(fileSet *token.FileSet, filename string, name fileName, 
 	return violations
 }
 
-func providerGenDeclViolations(fileSet *token.FileSet, filename string, decl *ast.GenDecl, expectedProviderType string) ([]Violation, bool) {
+func providerGenDeclViolations(file rulekit.GoFile, decl *ast.GenDecl, expectedProviderType string) ([]Violation, bool) {
 	var violations []Violation
 	providerTypeFound := false
 	switch decl.Tok {
 	case token.IMPORT:
 		for _, importSpec := range decl.Specs {
 			spec, ok := importSpec.(*ast.ImportSpec)
-			if ok && forbiddenProviderImport(importPath(spec)) {
-				violations = append(violations, violationAt(fileSet, filename, spec.Pos(), "provider files must not import "+importPath(spec)))
+			if ok && forbiddenProviderImport(file, importPath(spec)) {
+				violations = append(violations, violationAt(file.Fset, file.AbsPath, spec.Pos(), "provider files must not import "+importPath(spec)))
 			}
 		}
 	case token.TYPE:
@@ -49,19 +51,19 @@ func providerGenDeclViolations(fileSet *token.FileSet, filename string, decl *as
 			}
 			if typeNameContains(typeSpec.Name.Name, "Provider") {
 				if typeSpec.Name.Name != expectedProviderType {
-					violations = append(violations, violationAt(fileSet, filename, typeSpec.Pos(), "provider files must declare "+expectedProviderType+" as their provider type"))
+					violations = append(violations, violationAt(file.Fset, file.AbsPath, typeSpec.Pos(), "provider files must declare "+expectedProviderType+" as their provider type"))
 				} else {
 					providerTypeFound = true
 				}
 			}
 			if hasStructTag(typeSpec, "bun") {
-				violations = append(violations, violationAt(fileSet, filename, typeSpec.Pos(), "provider types must not declare persistence tags"))
+				violations = append(violations, violationAt(file.Fset, file.AbsPath, typeSpec.Pos(), "provider types must not declare persistence tags"))
 			}
 		}
 	case token.CONST, token.VAR:
-		violations = append(violations, violationAt(fileSet, filename, decl.Pos(), "provider files must only declare provider types and functions"))
+		violations = append(violations, violationAt(file.Fset, file.AbsPath, decl.Pos(), "provider files must only declare provider types and functions"))
 	default:
-		violations = append(violations, violationAt(fileSet, filename, decl.Pos(), "provider files must only declare provider types and functions"))
+		violations = append(violations, violationAt(file.Fset, file.AbsPath, decl.Pos(), "provider files must only declare provider types and functions"))
 	}
 	return violations, providerTypeFound
 }
@@ -105,17 +107,16 @@ func resultTypeName(expr ast.Expr) string {
 	}
 }
 
-func forbiddenProviderImport(importPath string) bool {
-	return forbiddenServiceModelImport(importPath) ||
-		containsImport(importPath, "/internal/adapter") ||
-		containsImport(importPath, "/internal/runtime") ||
-		containsImport(importPath, "/internal/repository")
+func forbiddenProviderImport(file rulekit.GoFile, importPath string) bool {
+	for _, imported := range file.Imports {
+		if imported.Path != importPath && imported.PackagePath != importPath {
+			continue
+		}
+		return imported.ModuleLocal && imported.TargetLayer != "service"
+	}
+	return false
 }
 
 func typeNameContains(name string, part string) bool {
 	return strings.Contains(name, part)
-}
-
-func containsImport(importPath string, part string) bool {
-	return strings.Contains(importPath, part)
 }

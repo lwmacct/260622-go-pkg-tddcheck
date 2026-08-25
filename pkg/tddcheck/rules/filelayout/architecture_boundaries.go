@@ -3,6 +3,7 @@ package filelayout
 import (
 	"fmt"
 	"go/ast"
+	"go/token"
 	"go/types"
 	"sort"
 	"strings"
@@ -76,22 +77,46 @@ func publicTypeBoundaryViolations(snapshot *rulekit.Snapshot) []Violation {
 	}
 	var violations []Violation
 	for _, file := range snapshot.Files {
-		if file.IsTest || file.Layer != "service" || file.AST == nil {
+		if file.IsTest || file.Layer != "service" || file.AST == nil || (file.IdentityOK && file.Identity.Kind == "free") {
 			continue
 		}
 		for _, declaration := range file.AST.Decls {
-			function, ok := declaration.(*ast.FuncDecl)
-			if !ok || function.Recv == nil || !ast.IsExported(function.Name.Name) {
-				continue
-			}
-			for _, field := range signatureFields(function.Type) {
-				if typeName := repositoryBoundaryType(file, field.Type, suffixes); typeName != "" {
-					violations = append(violations, Violation{
-						File:    rulekit.DisplayFilename(file.AbsPath),
-						Line:    file.Fset.Position(field.Pos()).Line,
-						Code:    RuleID + "/public-type-boundary",
-						Message: fmt.Sprintf("service public method %s must not expose repository type %s", function.Name.Name, typeName),
-					})
+			switch typed := declaration.(type) {
+			case *ast.FuncDecl:
+				if !ast.IsExported(typed.Name.Name) {
+					continue
+				}
+				for _, field := range signatureFields(typed.Type) {
+					if typeName := repositoryBoundaryType(file, field.Type, suffixes); typeName != "" {
+						kind := "function"
+						if typed.Recv != nil {
+							kind = "method"
+						}
+						violations = append(violations, Violation{
+							File:    rulekit.DisplayFilename(file.AbsPath),
+							Line:    file.Fset.Position(field.Pos()).Line,
+							Code:    RuleID + "/public-type-boundary",
+							Message: fmt.Sprintf("service public %s %s must not expose repository type %s", kind, typed.Name.Name, typeName),
+						})
+					}
+				}
+			case *ast.GenDecl:
+				if typed.Tok != token.TYPE {
+					continue
+				}
+				for _, spec := range typed.Specs {
+					typeSpec, ok := spec.(*ast.TypeSpec)
+					if !ok || !ast.IsExported(typeSpec.Name.Name) {
+						continue
+					}
+					if typeName := repositoryBoundaryType(file, typeSpec.Type, suffixes); typeName != "" {
+						violations = append(violations, Violation{
+							File:    rulekit.DisplayFilename(file.AbsPath),
+							Line:    file.Fset.Position(typeSpec.Pos()).Line,
+							Code:    RuleID + "/public-type-boundary",
+							Message: fmt.Sprintf("service public type %s must not expose repository type %s", typeSpec.Name.Name, typeName),
+						})
+					}
 				}
 			}
 		}
@@ -116,6 +141,9 @@ func signatureFields(function *ast.FuncType) []*ast.Field {
 func repositoryBoundaryType(file rulekit.GoFile, expression ast.Expr, suffixes []string) string {
 	if semantic := file.TypeOf(expression); semantic != nil {
 		if name := repositoryNamedType(semantic, suffixes); name != "" {
+			return name
+		}
+		if name := repositoryNamedTypeDeep(semantic, suffixes, map[string]bool{}); name != "" {
 			return name
 		}
 	}
@@ -163,6 +191,76 @@ func repositoryNamedType(value types.Type, suffixes []string) string {
 			return ""
 		}
 		return object.Pkg().Name() + "." + object.Name()
+	}
+	return ""
+}
+
+func repositoryNamedTypeDeep(value types.Type, suffixes []string, seen map[string]bool) string {
+	value = types.Unalias(value)
+	switch typed := value.(type) {
+	case *types.Pointer:
+		return repositoryNamedTypeDeep(typed.Elem(), suffixes, seen)
+	case *types.Slice:
+		return repositoryNamedTypeDeep(typed.Elem(), suffixes, seen)
+	case *types.Array:
+		return repositoryNamedTypeDeep(typed.Elem(), suffixes, seen)
+	case *types.Map:
+		if name := repositoryNamedTypeDeep(typed.Key(), suffixes, seen); name != "" {
+			return name
+		}
+		return repositoryNamedTypeDeep(typed.Elem(), suffixes, seen)
+	case *types.Chan:
+		return repositoryNamedTypeDeep(typed.Elem(), suffixes, seen)
+	case *types.Named:
+		object := typed.Obj()
+		if object == nil {
+			return ""
+		}
+		if object.Pkg() != nil && isRepositoryPackage(object.Pkg().Path()) {
+			if hasSuffix(object.Name(), suffixes) {
+				return object.Pkg().Name() + "." + object.Name()
+			}
+			return ""
+		}
+		pkgPath := ""
+		if object.Pkg() != nil {
+			pkgPath = object.Pkg().Path()
+		}
+		key := pkgPath + "\x00" + object.Name()
+		if seen[key] {
+			return ""
+		}
+		seen[key] = true
+		return repositoryNamedTypeDeep(typed.Underlying(), suffixes, seen)
+	case *types.Struct:
+		for index := 0; index < typed.NumFields(); index++ {
+			if name := repositoryNamedTypeDeep(typed.Field(index).Type(), suffixes, seen); name != "" {
+				return name
+			}
+		}
+	case *types.Interface:
+		for index := 0; index < typed.NumMethods(); index++ {
+			if name := repositoryNamedTypeDeep(typed.Method(index).Type(), suffixes, seen); name != "" {
+				return name
+			}
+		}
+	case *types.Signature:
+		if name := repositoryTupleType(typed.Params(), suffixes, seen); name != "" {
+			return name
+		}
+		return repositoryTupleType(typed.Results(), suffixes, seen)
+	}
+	return ""
+}
+
+func repositoryTupleType(tuple *types.Tuple, suffixes []string, seen map[string]bool) string {
+	if tuple == nil {
+		return ""
+	}
+	for index := 0; index < tuple.Len(); index++ {
+		if name := repositoryNamedTypeDeep(tuple.At(index).Type(), suffixes, seen); name != "" {
+			return name
+		}
 	}
 	return ""
 }

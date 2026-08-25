@@ -115,7 +115,7 @@ func checkCommands(context declContext) []Violation {
 }
 
 func checkProvider(context declContext) []Violation {
-	return providerViolations(context.file.Fset, context.file.AbsPath, context.name, context.file.AST)
+	return providerViolations(context.file, context.name)
 }
 
 func checkUtils(context declContext) []Violation {
@@ -131,7 +131,7 @@ func checkSupport(context declContext) []Violation {
 		violations := checkArchitectureSupport(context)
 		return append(violations, supportDeclarationLineViolations(context.file.Fset, context.file.AbsPath, context.name, context.file.AST, context.profile.MaxSupportDeclarationLines)...)
 	}
-	return supportViolations(context.file.Fset, context.file.AbsPath, context.layer(), context.name, context.file.AST, context.profile.MaxSupportDeclarationLines)
+	return supportViolations(context.file, context.name, context.profile.MaxSupportDeclarationLines)
 }
 
 func checkTypes(context declContext) []Violation {
@@ -139,13 +139,11 @@ func checkTypes(context declContext) []Violation {
 }
 
 func checkService(context declContext) []Violation {
-	violations := servicePersistenceViolations(context.file)
-	violations = append(violations, serviceViolations(context.file.Fset, context.file.AbsPath, context.name, context.file.AST)...)
-	return violations
+	return serviceViolations(context.file.Fset, context.file.AbsPath, context.name, context.file.AST)
 }
 
 func checkStore(context declContext) []Violation {
-	return storeViolations(context.file, context.name)
+	return storeViolations(context.file, context.name, context.profile.StoreMethodActions)
 }
 
 func checkSchema(context declContext) []Violation {

@@ -19,6 +19,11 @@ type Config struct {
 
 	// LayerDirs lists directory names checked by file-layout rules.
 	LayerDirs []string `json:"layerDirs,omitempty"`
+	// LayerPackageNames maps strict layer directories to their expected Go
+	// package names. Entries also make the layer directory an exact child of
+	// the analyzed root; nested packages are reported as architecture errors.
+	// Nil inherits the default handler/service/repository mapping.
+	LayerPackageNames map[string]string `json:"layerPackageNames,omitempty"`
 	// DependencyLayerDirs lists directory names recognized by dependency rules.
 	// A nil value inherits LayerDirs.
 	DependencyLayerDirs []string `json:"dependencyLayerDirs,omitempty"`
@@ -43,12 +48,24 @@ type Config struct {
 	// ForbiddenWeakSubjects lists ambiguous business subject names.
 	ForbiddenWeakSubjects []string `json:"forbiddenWeakSubjects,omitempty"`
 	// PublicTypeBoundarySuffixes lists repository type suffixes that must not
-	// appear in exported service method signatures. Nil inherits defaults;
+	// appear in exported service contracts. Nil inherits defaults;
 	// an explicit empty slice disables this boundary check.
 	PublicTypeBoundarySuffixes []string `json:"publicTypeBoundarySuffixes,omitempty"`
 	// MaxSupportDeclarationLines limits the total lines occupied by type, const,
 	// and var declarations in a support file. Zero disables the limit.
 	MaxSupportDeclarationLines int `json:"maxSupportDeclarationLines,omitempty"`
+	// StoreMethodActions lists recognized exported Store method action prefixes.
+	// Unknown actions and action-specific result shapes are style warnings.
+	// Nil inherits defaults; an explicit empty slice disables action-style checks.
+	StoreMethodActions []string `json:"storeMethodActions,omitempty"`
+	// WarnSubjectPrivateAccess reports private declarations used across business
+	// subjects in the same layer package.
+	WarnSubjectPrivateAccess bool `json:"warnSubjectPrivateAccess,omitempty"`
+	// WarnUnclassifiedFiles reports Go files outside configured layout layers.
+	WarnUnclassifiedFiles bool `json:"warnUnclassifiedFiles,omitempty"`
+	// MaxSharedDeclarationLines limits the total AST line span of declarations in
+	// x.shared files. Zero disables the warning.
+	MaxSharedDeclarationLines int `json:"maxSharedDeclarationLines,omitempty"`
 }
 
 type Profile struct {
@@ -56,10 +73,15 @@ type Profile struct {
 	DependencyLayers           []string
 	SkipDirs                   []string
 	LayerRules                 []LayerDependencyRule
+	LayerPackageNames          map[string]string
 	EscapedSubjectSuffixes     []string
 	ForbiddenWeakSubjects      []string
 	PublicTypeBoundarySuffixes []string
 	MaxSupportDeclarationLines int
+	StoreMethodActions         []string
+	WarnSubjectPrivateAccess   bool
+	WarnUnclassifiedFiles      bool
+	MaxSharedDeclarationLines  int
 
 	layersByName             map[string]LayerProfile
 	dependencyLayerSet       map[string]bool
@@ -106,7 +128,12 @@ const (
 func DefaultConfig() Config {
 	return Config{
 		LayerDirs: []string{"handler", "service", "repository"},
-		SkipDirs:  []string{".git", ".hg", ".svn", "vendor", "node_modules", "dist", "build"},
+		LayerPackageNames: map[string]string{
+			"handler":    "handler",
+			"service":    "service",
+			"repository": "repository",
+		},
+		SkipDirs: []string{".git", ".hg", ".svn", "vendor", "node_modules", "dist", "build"},
 		LayerRules: []LayerDependencyRule{
 			{SourceLayer: "handler", TargetLayer: "repository", Message: "handler must not import repository"},
 			{SourceLayer: "service", TargetLayer: "handler", Message: "service must not import handler"},
@@ -168,6 +195,7 @@ func DefaultConfig() Config {
 		},
 		ForbiddenWeakSubjects:      []string{"common", "default", "helper", "helpers", "misc", "util", "utils"},
 		PublicTypeBoundarySuffixes: []string{"Model", "Row", "Patch", "Create", "Filter"},
+		StoreMethodActions:         []string{"List", "Fetch", "Count", "Exists", "Create", "Update", "Delete", "Upsert", "Add", "Remove", "Replace"},
 	}
 }
 
@@ -178,6 +206,9 @@ func (c Config) WithDefaults() Config {
 	}
 	if c.DependencyLayerDirs == nil {
 		c.DependencyLayerDirs = c.LayerDirs
+	}
+	if c.LayerPackageNames == nil {
+		c.LayerPackageNames = defaults.LayerPackageNames
 	}
 	if c.SkipDirs == nil {
 		c.SkipDirs = defaults.SkipDirs
@@ -206,6 +237,9 @@ func (c Config) WithDefaults() Config {
 	if c.PublicTypeBoundarySuffixes == nil {
 		c.PublicTypeBoundarySuffixes = defaults.PublicTypeBoundarySuffixes
 	}
+	if c.StoreMethodActions == nil {
+		c.StoreMethodActions = defaults.StoreMethodActions
+	}
 	return c
 }
 
@@ -214,6 +248,7 @@ func (c Config) WithDefaults() Config {
 func (c Config) Compile() (Config, error) {
 	inheritedLayerRules := c.LayerRules == nil
 	inheritedSubjectAnchors := c.LayerSubjectAnchorKinds == nil
+	inheritedLayerPackageNames := c.LayerPackageNames == nil
 	c = c.WithDefaults()
 	if inheritedLayerRules {
 		layers := sliceSet(c.DependencyLayerDirs)
@@ -227,12 +262,19 @@ func (c Config) Compile() (Config, error) {
 			return !layers[layer]
 		})
 	}
+	if inheritedLayerPackageNames {
+		layers := sliceSet(c.LayerDirs)
+		maps.DeleteFunc(c.LayerPackageNames, func(layer string, _ string) bool {
+			return !layers[layer]
+		})
+	}
 	if err := c.Validate(); err != nil {
 		return Config{}, err
 	}
 	c.BuildFlags = slices.Clone(c.BuildFlags)
 	c.LayerDirs = slices.Clone(c.LayerDirs)
 	c.DependencyLayerDirs = slices.Clone(c.DependencyLayerDirs)
+	c.LayerPackageNames = maps.Clone(c.LayerPackageNames)
 	c.SkipDirs = slices.Clone(c.SkipDirs)
 	c.LayerRules = slices.Clone(c.LayerRules)
 	for index := range c.LayerRules {
@@ -246,6 +288,7 @@ func (c Config) Compile() (Config, error) {
 	c.EscapedSubjectSuffixes = slices.Clone(c.EscapedSubjectSuffixes)
 	c.ForbiddenWeakSubjects = slices.Clone(c.ForbiddenWeakSubjects)
 	c.PublicTypeBoundarySuffixes = slices.Clone(c.PublicTypeBoundarySuffixes)
+	c.StoreMethodActions = slices.Clone(c.StoreMethodActions)
 	return c, nil
 }
 
@@ -262,6 +305,9 @@ func (c Config) Validate() error {
 	if c.MaxSupportDeclarationLines < 0 {
 		return fmt.Errorf("max support declaration lines must not be negative")
 	}
+	if c.MaxSharedDeclarationLines < 0 {
+		return fmt.Errorf("max shared declaration lines must not be negative")
+	}
 	dependencyLayers := sliceSet(c.DependencyLayerDirs)
 	for _, layer := range c.LayerDirs {
 		mode := c.LayerFileNameModes[layer]
@@ -275,6 +321,14 @@ func (c Config) Validate() error {
 		}
 		if !dependencyLayers[rule.TargetLayer] {
 			return fmt.Errorf("dependency rule references unknown target layer %q", rule.TargetLayer)
+		}
+	}
+	for layer, packageName := range c.LayerPackageNames {
+		if !dependencyLayers[layer] && !sliceSet(c.LayerDirs)[layer] {
+			return fmt.Errorf("layer package names reference unknown layer %q", layer)
+		}
+		if !validPackageName(packageName) {
+			return fmt.Errorf("layer %q has invalid package name %q", layer, packageName)
 		}
 	}
 	return nil
@@ -338,6 +392,11 @@ func (c Config) ValidateFileLayout() error {
 			return fmt.Errorf("public type boundary suffix must not be empty")
 		}
 	}
+	for _, action := range c.StoreMethodActions {
+		if !validExportedIdentifier(action) {
+			return fmt.Errorf("store method action %q must be an exported identifier", action)
+		}
+	}
 	return nil
 }
 
@@ -368,6 +427,33 @@ func validateNames(label string, values []string) error {
 		seen[value] = true
 	}
 	return nil
+}
+
+func validPackageName(value string) bool {
+	if value == "" || (value[0] < 'a' || value[0] > 'z') {
+		return false
+	}
+	for _, char := range value[1:] {
+		if (char < 'a' || char > 'z') && (char < '0' || char > '9') && char != '_' {
+			return false
+		}
+	}
+	return true
+}
+
+func validExportedIdentifier(value string) bool {
+	if value == "" || value[0] < 'A' || value[0] > 'Z' {
+		return false
+	}
+	for _, char := range value[1:] {
+		if (char < 'a' || char > 'z') &&
+			(char < 'A' || char > 'Z') &&
+			(char < '0' || char > '9') &&
+			char != '_' {
+			return false
+		}
+	}
+	return true
 }
 
 func sliceSet(values []string) map[string]bool {
@@ -422,10 +508,15 @@ func (c Config) Profile() Profile {
 		DependencyLayers:           c.DependencyLayerDirs,
 		SkipDirs:                   c.SkipDirs,
 		LayerRules:                 c.LayerRules,
+		LayerPackageNames:          maps.Clone(c.LayerPackageNames),
 		EscapedSubjectSuffixes:     c.EscapedSubjectSuffixes,
 		ForbiddenWeakSubjects:      c.ForbiddenWeakSubjects,
 		PublicTypeBoundarySuffixes: slices.Clone(c.PublicTypeBoundarySuffixes),
 		MaxSupportDeclarationLines: c.MaxSupportDeclarationLines,
+		StoreMethodActions:         slices.Clone(c.StoreMethodActions),
+		WarnSubjectPrivateAccess:   c.WarnSubjectPrivateAccess,
+		WarnUnclassifiedFiles:      c.WarnUnclassifiedFiles,
+		MaxSharedDeclarationLines:  c.MaxSharedDeclarationLines,
 		layersByName:               layersByName,
 		dependencyLayerSet:         sliceSet(c.DependencyLayerDirs),
 		kindPolicyByLayer:          kindPolicies,
@@ -444,6 +535,11 @@ func (p Profile) LayerNames() []string {
 		names = append(names, layer.Name)
 	}
 	return names
+}
+
+func (p Profile) PackageName(layer string) (string, bool) {
+	name, ok := p.LayerPackageNames[layer]
+	return name, ok
 }
 
 func (p Profile) DependencyLayer(name string) bool {

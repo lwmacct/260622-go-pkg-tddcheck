@@ -84,10 +84,9 @@ func violationsInFile(snapshot *rulekit.Snapshot, file rulekit.GoFile) []Violati
 }
 
 func sourceLayer(file rulekit.GoFile, profile rulekit.Profile) (string, string, bool) {
-	for _, part := range strings.Split(file.RelPath, "/") {
-		if profile.DependencyLayer(part) {
-			return part, file.Dir, true
-		}
+	layer := rulekit.LayerForRelPathStrict(file.RelPath, profile.DependencyLayers, profile.LayerPackageNames)
+	if layer != "" {
+		return layer, file.Dir, true
 	}
 	return "", "", false
 }
@@ -118,7 +117,7 @@ func importLayer(snapshot *rulekit.Snapshot, importPath string, profile rulekit.
 			return "", "", false
 		}
 	}
-	targetLayer := rulekit.LayerForRelPath(targetRel, profile.DependencyLayers)
+	targetLayer := rulekit.LayerForRelPathStrict(targetRel, profile.DependencyLayers, profile.LayerPackageNames)
 	if targetLayer == "" {
 		return "", "", false
 	}

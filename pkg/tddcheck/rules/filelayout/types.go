@@ -12,7 +12,7 @@ func typesViolations(file rulekit.GoFile, name fileName) []Violation {
 	for _, decl := range file.AST.Decls {
 		switch typed := decl.(type) {
 		case *ast.GenDecl:
-			violations = append(violations, declarationGenDeclViolations(file.Fset, file.AbsPath, file.Layer, name, "types", typed)...)
+			violations = append(violations, declarationGenDeclViolations(file, name, "types", typed)...)
 		case *ast.FuncDecl:
 			violations = append(violations, typesFuncViolations(file, typed)...)
 		}

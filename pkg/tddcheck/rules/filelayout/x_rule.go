@@ -45,16 +45,21 @@ func Check(ctx context.Context, root string, config rulekit.Config) ([]Violation
 }
 
 func checkFile(_ context.Context, snapshot *rulekit.Snapshot, file rulekit.GoFile) ([]rulekit.Diagnostic, error) {
-	if file.IsTest || file.Layer == "" {
+	if file.IsTest {
 		return nil, nil
+	}
+	if file.Layer == "" {
+		return diagnostics(unclassifiedFileViolation(snapshot.Profile, file)), nil
 	}
 	return diagnostics(violationsInFile(snapshot.Profile, file)), nil
 }
 
 func checkSnapshot(_ context.Context, _ *rulekit.Snapshot, snapshot *rulekit.Snapshot) ([]rulekit.Diagnostic, error) {
-	values := subjectAnchorViolations(snapshot)
+	values := packageBoundaryViolations(snapshot)
+	values = append(values, subjectAnchorViolations(snapshot)...)
 	values = append(values, identityCollisionViolations(snapshot)...)
 	values = append(values, publicTypeBoundaryViolations(snapshot)...)
+	values = append(values, subjectPrivateAccessViolations(snapshot)...)
 	return diagnostics(values), nil
 }
 
@@ -84,13 +89,16 @@ func violationsInSnapshot(snapshot *rulekit.Snapshot) []Violation {
 			continue
 		}
 		if file.Layer == "" {
+			violations = append(violations, unclassifiedFileViolation(snapshot.Profile, file)...)
 			continue
 		}
 		violations = append(violations, violationsInFile(snapshot.Profile, file)...)
 	}
 	violations = append(violations, subjectAnchorViolations(snapshot)...)
+	violations = append(violations, packageBoundaryViolations(snapshot)...)
 	violations = append(violations, identityCollisionViolations(snapshot)...)
 	violations = append(violations, publicTypeBoundaryViolations(snapshot)...)
+	violations = append(violations, subjectPrivateAccessViolations(snapshot)...)
 	return violations
 }
 
@@ -121,7 +129,13 @@ func violationsInFile(profile rulekit.Profile, file rulekit.GoFile) []Violation 
 		name:    parsed,
 		file:    file,
 	}
-	return layoutFileViolations(context)
+	violations := layoutFileViolations(context)
+	for index := range violations {
+		if violations[index].Code == "" {
+			violations[index].Code = RuleID + "/" + context.name.Kind
+		}
+	}
+	return violations
 }
 
 type layoutFile struct {
@@ -154,6 +168,15 @@ func layoutFileViolations(context layoutFile) []Violation {
 			Message:  "free files bypass declaration and subject ownership checks; classify this file when possible",
 		})
 		return violations
+	}
+	if context.name.Kind == "utils" {
+		violations = append(violations, Violation{
+			File:     rulekit.DisplayFilename(context.file.AbsPath),
+			Line:     1,
+			Code:     RuleID + "/legacy-utils",
+			Severity: rulekit.SeverityWarning,
+			Message:  "utils files overlap support helpers; place new helper functions in the subject support file",
+		})
 	}
 	if context.qualifiedKindMode() && !context.architectureFile() && rulekit.StringIn(context.name.Subject, context.profile.ForbiddenWeakSubjects) {
 		violations = append(violations, Violation{
@@ -197,6 +220,9 @@ func layoutFileViolations(context layoutFile) []Violation {
 			Message: fmt.Sprintf("architecture namespace %q is not allowed in %s", context.name.Namespace, context.file.Layer),
 		})
 	}
+	if context.file.Layer == "service" {
+		violations = append(violations, servicePersistenceViolations(context.file)...)
+	}
 	var subjectIdentityViolations []Violation
 	if context.qualifiedKindMode() && context.name.Kind != "free" {
 		subjectIdentityViolations = inferredSubjectViolations(context.name, context.file)
@@ -207,6 +233,7 @@ func layoutFileViolations(context layoutFile) []Violation {
 	}
 
 	violations = append(violations, declarationViolations(context.profile, context.name, context.file, policyID)...)
+	violations = append(violations, sharedDeclarationLineViolations(context.file, context.name, context.profile.MaxSharedDeclarationLines)...)
 	return violations
 }
 

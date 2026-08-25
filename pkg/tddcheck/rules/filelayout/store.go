@@ -3,12 +3,13 @@ package filelayout
 import (
 	"go/ast"
 	"go/token"
+	"slices"
 	"strings"
 
 	"github.com/lwmacct/260622-go-pkg-tddcheck/pkg/tddcheck/rulekit"
 )
 
-func storeViolations(file rulekit.GoFile, name fileName) []Violation {
+func storeViolations(file rulekit.GoFile, name fileName, actions []string) []Violation {
 	var violations []Violation
 	expectedSubjectPrefix := upperCamelName(name.Qualifier())
 	for _, decl := range file.AST.Decls {
@@ -23,8 +24,13 @@ func storeViolations(file rulekit.GoFile, name fileName) []Violation {
 				violations = append(violations, violationAt(file.Fset, file.AbsPath, typed.Pos(), "store files must only declare Store receiver methods"))
 				continue
 			}
-			if message := storeMethodNameViolation(typed, expectedSubjectPrefix); message != "" {
-				violations = append(violations, violationAt(file.Fset, file.AbsPath, typed.Pos(), message))
+			if message, style := storeMethodNameViolation(typed, expectedSubjectPrefix, actions); message != "" {
+				violation := violationAt(file.Fset, file.AbsPath, typed.Pos(), message)
+				if style {
+					violation.Code = RuleID + "/store-style"
+					violation.Severity = rulekit.SeverityWarning
+				}
+				violations = append(violations, violation)
 			}
 			if !firstParamIsContext(file, typed) {
 				violations = append(violations, violationAt(file.Fset, file.AbsPath, typed.Pos(), "store methods must accept context.Context as the first parameter"))
@@ -33,8 +39,11 @@ func storeViolations(file rulekit.GoFile, name fileName) []Violation {
 				violations = append(violations, violationAt(file.Fset, file.AbsPath, typed.Pos(), "store methods must return error as the last result"))
 			}
 			if typed.Name.IsExported() {
-				if message := storeMethodResultViolation(typed); message != "" {
-					violations = append(violations, violationAt(file.Fset, file.AbsPath, typed.Pos(), message))
+				if message := storeMethodResultViolation(typed, actions); message != "" {
+					violation := violationAt(file.Fset, file.AbsPath, typed.Pos(), message)
+					violation.Code = RuleID + "/store-style"
+					violation.Severity = rulekit.SeverityWarning
+					violations = append(violations, violation)
 				}
 			}
 		}
@@ -42,34 +51,40 @@ func storeViolations(file rulekit.GoFile, name fileName) []Violation {
 	return violations
 }
 
-func storeMethodNameViolation(funcDecl *ast.FuncDecl, expectedSubjectPrefix string) string {
+func storeMethodNameViolation(funcDecl *ast.FuncDecl, expectedSubjectPrefix string, actions []string) (string, bool) {
 	name := funcDecl.Name.Name
 	if !funcDecl.Name.IsExported() {
 		if !lowerCamelIdentifier(name) {
-			return "private store helper methods must use lowerCamel names"
+			return "private store helper methods must use lowerCamel names", false
 		}
 		if storeMethodNameExposesQuery(name) {
-			return "store method names must not expose query implementation details"
+			return "store method names must not expose query implementation details", false
 		}
-		return ""
+		return "", false
 	}
-	action, subject, ok := splitStoreMethodName(name)
+	if len(actions) == 0 {
+		return "", false
+	}
+	action, subject, ok := splitStoreMethodName(name, actions)
 	if !ok {
-		return "store method names must start with List, Fetch, Count, Exists, Create, Update, Delete, Upsert, Add, Remove, or Replace"
+		if storeMethodNameExposesQuery(name) {
+			return "store method names must not expose query implementation details", false
+		}
+		return "store method action is not configured; add the domain action to StoreMethodActions when intentional", true
 	}
 	if subject == "" {
-		return "store method names must include a subject after the action"
+		return "store method names must include a subject after the action", false
 	}
 	if !startsWithUpper(subject) {
-		return "store method names must use Action+UpperCamelSubject"
+		return "store method names must use Action+UpperCamelSubject", false
 	}
 	if message := storeMethodSubjectViolation(action, subject, expectedSubjectPrefix); message != "" {
-		return message
+		return message, false
 	}
 	if storeMethodNameExposesQuery(subject) {
-		return "store method names must not expose query implementation details"
+		return "store method names must not expose query implementation details", false
 	}
-	return ""
+	return "", false
 }
 
 func storeMethodSubjectViolation(action string, subject string, expected string) string {
@@ -130,8 +145,12 @@ func storeMethodNameExposesQuery(name string) bool {
 	return false
 }
 
-func splitStoreMethodName(name string) (string, string, bool) {
-	for _, action := range []string{"Replace", "Remove", "Update", "Upsert", "Create", "Delete", "Exists", "Fetch", "Count", "List", "Add"} {
+func splitStoreMethodName(name string, actions []string) (string, string, bool) {
+	ordered := append([]string(nil), actions...)
+	slices.SortFunc(ordered, func(a, b string) int {
+		return len(b) - len(a)
+	})
+	for _, action := range ordered {
 		if strings.HasPrefix(name, action) {
 			return action, strings.TrimPrefix(name, action), true
 		}
@@ -139,8 +158,11 @@ func splitStoreMethodName(name string) (string, string, bool) {
 	return "", "", false
 }
 
-func storeMethodResultViolation(funcDecl *ast.FuncDecl) string {
-	action, _, ok := splitStoreMethodName(funcDecl.Name.Name)
+func storeMethodResultViolation(funcDecl *ast.FuncDecl, actions []string) string {
+	if len(actions) == 0 {
+		return ""
+	}
+	action, _, ok := splitStoreMethodName(funcDecl.Name.Name, actions)
 	if !ok {
 		return ""
 	}

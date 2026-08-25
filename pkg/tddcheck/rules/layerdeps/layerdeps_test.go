@@ -42,6 +42,22 @@ import _ "example.com/app/internal/service"
 	assertLayerViolationContains(t, violations, "repository must not import service")
 }
 
+func TestViolationsRejectsForbiddenImportsFromNestedStrictLayer(t *testing.T) {
+	root := fixture(t, map[string]string{
+		"internal/handler/device/device.handler.go": `package handler
+import _ "example.com/app/internal/repository"
+`,
+		"internal/repository/device.store.go": `package repository
+`,
+	})
+
+	violations, err := checkRoot(filepath.Join(root, "internal"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertLayerViolationContains(t, violations, "handler must not import repository")
+}
+
 func TestViolationsChecksSharedFreeFileImports(t *testing.T) {
 	root := fixture(t, map[string]string{
 		"internal/handler/x.shared.free.go": `package handler

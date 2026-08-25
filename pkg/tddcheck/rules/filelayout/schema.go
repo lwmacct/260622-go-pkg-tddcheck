@@ -13,7 +13,7 @@ func schemaViolations(fileSet *token.FileSet, filename string, name fileName, pa
 		case *ast.GenDecl:
 			violations = append(violations, schemaGenDeclViolations(fileSet, filename, name, typed)...)
 		case *ast.FuncDecl:
-			violations = append(violations, schemaFuncViolations(fileSet, filename, typed)...)
+			violations = append(violations, schemaFuncViolations(fileSet, filename, name, typed)...)
 		}
 	}
 	return violations
@@ -45,7 +45,7 @@ func schemaGenDeclViolations(fileSet *token.FileSet, filename string, name fileN
 	return violations
 }
 
-func schemaFuncViolations(fileSet *token.FileSet, filename string, decl *ast.FuncDecl) []Violation {
+func schemaFuncViolations(fileSet *token.FileSet, filename string, name fileName, decl *ast.FuncDecl) []Violation {
 	if decl.Recv != nil {
 		receiver := receiverTypeName(decl.Recv)
 		if !strings.HasSuffix(receiver, "Model") {
@@ -55,6 +55,12 @@ func schemaFuncViolations(fileSet *token.FileSet, filename string, decl *ast.Fun
 	}
 	if !schemaFunctionName(decl.Name.Name) {
 		return []Violation{violationAt(fileSet, filename, decl.Pos(), "schema package-level functions must be schema lifecycle functions")}
+	}
+	if name.Namespace == "" && ast.IsExported(decl.Name.Name) {
+		expected := upperCamelName(name.Subject)
+		if !camelTokenPrefix(decl.Name.Name, expected) {
+			return []Violation{violationAt(fileSet, filename, decl.Pos(), "schema lifecycle functions for "+name.Subject+" must start with "+expected)}
+		}
 	}
 	return nil
 }

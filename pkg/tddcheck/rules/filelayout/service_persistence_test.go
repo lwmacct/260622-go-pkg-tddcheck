@@ -86,8 +86,11 @@ func (s *DeviceService) Get(ctx context.Context) error {
 }
 `,
 		"internal/repository/x.store.repository.go": `package repository
-type Store struct{}
+type Store struct { last *DeviceModel }
 func NewStore() *Store { return &Store{} }
+`,
+		"internal/repository/device.schema.go": `package repository
+type DeviceModel struct{}
 `,
 		"internal/repository/device.store.go": `package repository
 import "context"
@@ -139,4 +142,57 @@ func (s *DeviceService) List() { s.Query() }
 		t.Fatal(err)
 	}
 	assertNoViolationContains(t, violations, "persistence APIs directly")
+}
+
+func TestViolationsChecksPersistenceAcrossServiceFileRoles(t *testing.T) {
+	root := fixture(t, map[string]string{
+		"internal/service/device.service.go": `package service
+type DeviceService struct{}
+func NewDeviceService() *DeviceService { return &DeviceService{} }
+`,
+		"internal/service/device.commands.go": `package service
+import "database/sql"
+type DeviceRequest struct { DB *sql.DB }
+`,
+		"internal/service/device.types.go": `package service
+import "example.com/app/internal/repository"
+type DeviceResult struct { Row repository.DeviceRow }
+`,
+		"internal/service/device.support.go": `package service
+import "github.com/uptrace/bun"
+type DeviceSupport struct { DB *bun.DB }
+`,
+		"internal/repository/device.support.go": `package repository
+type DeviceRow struct{}
+`,
+	})
+
+	violations, err := checkRoot(filepath.Join(root, "internal"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertViolationContains(t, violations, "service files must not import persistence package database/sql")
+	assertViolationContains(t, violations, "service files must not import persistence package github.com/uptrace/bun")
+	assertViolationContains(t, violations, "service public type DeviceResult must not expose repository type")
+}
+
+func TestViolationsRejectsRepositoryModelHiddenInExportedServiceType(t *testing.T) {
+	root := fixture(t, map[string]string{
+		"internal/service/device.service.go": `package service
+import "example.com/app/internal/repository"
+type DeviceService struct{}
+type DeviceResult struct { Row repository.DeviceRow }
+func NewDeviceService() *DeviceService { return &DeviceService{} }
+func (s *DeviceService) Get() DeviceResult { return DeviceResult{} }
+`,
+		"internal/repository/device.support.go": `package repository
+type DeviceRow struct{}
+`,
+	})
+
+	violations, err := checkRoot(filepath.Join(root, "internal"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertViolationContains(t, violations, "service public type DeviceResult must not expose repository type")
 }

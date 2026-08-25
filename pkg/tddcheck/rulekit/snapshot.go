@@ -69,6 +69,8 @@ type Import struct {
 	Name        string
 	Path        string
 	PackagePath string
+	TargetLayer string
+	ModuleLocal bool
 	Line        int
 	Column      int
 }
@@ -249,7 +251,7 @@ func (s *Snapshot) goFile(loaded *packages.Package, filename string, parsedFile 
 	if err != nil {
 		return GoFile{}, err
 	}
-	layer := LayerForRelPath(rel, s.Config.LayerDirs)
+	layer := LayerForRelPathStrict(rel, s.Config.LayerDirs, s.Profile.LayerPackageNames)
 	file := GoFile{
 		AbsPath:     filename,
 		RelPath:     filepath.ToSlash(rel),
@@ -279,18 +281,65 @@ func (s *Snapshot) goFile(loaded *packages.Package, filename string, parsedFile 
 		position := s.Fset.PositionFor(spec.Pos(), true)
 		target := loaded.Imports[path]
 		targetPath := path
+		targetLayer := ""
 		if target != nil && target.PkgPath != "" {
 			targetPath = target.PkgPath
+			targetLayer = s.packageLayer(target)
+		}
+		targetRel, moduleLocal := s.importRelPath(targetPath)
+		if targetLayer == "" && moduleLocal {
+			targetLayer = LayerForRelPathStrict(targetRel, s.Config.DependencyLayerDirs, s.Profile.LayerPackageNames)
 		}
 		file.Imports = append(file.Imports, Import{
 			Name:        name,
 			Path:        path,
 			PackagePath: targetPath,
+			TargetLayer: targetLayer,
+			ModuleLocal: moduleLocal,
 			Line:        position.Line,
 			Column:      position.Column,
 		})
 	}
 	return file, nil
+}
+
+func (s *Snapshot) packageLayer(pkg *packages.Package) string {
+	if pkg == nil {
+		return ""
+	}
+	dir := pkg.Dir
+	if dir == "" && len(pkg.CompiledGoFiles) > 0 {
+		dir = filepath.Dir(pkg.CompiledGoFiles[0])
+	}
+	if dir == "" && len(pkg.GoFiles) > 0 {
+		dir = filepath.Dir(pkg.GoFiles[0])
+	}
+	if dir == "" {
+		return ""
+	}
+	rel, err := filepath.Rel(s.Root, dir)
+	if err != nil || rel == ".." || strings.HasPrefix(filepath.ToSlash(rel), "../") {
+		return ""
+	}
+	return LayerForRelPathStrict(rel, s.Config.DependencyLayerDirs, s.Profile.LayerPackageNames)
+}
+
+func (s *Snapshot) importRelPath(importPath string) (string, bool) {
+	rootRel, err := filepath.Rel(s.ProjectRoot, s.Root)
+	if err != nil {
+		return "", false
+	}
+	rootImport := s.ModulePath
+	if rootRel != "." {
+		rootImport += "/" + filepath.ToSlash(rootRel)
+	}
+	if importPath == rootImport {
+		return ".", true
+	}
+	if value, found := strings.CutPrefix(importPath, rootImport+"/"); found {
+		return value, true
+	}
+	return "", false
 }
 
 func (s *Snapshot) skipFile(filename string) bool {
@@ -397,4 +446,19 @@ func LayerForRelPath(rel string, layers []string) string {
 		}
 	}
 	return ""
+}
+
+// LayerForRelPathStrict resolves configured strict layers by path component.
+// A strict layer is still returned when nested below another directory so the
+// file-layout rule can report the misplaced package instead of silently
+// classifying it as unclassified. Layers without a package-name contract keep
+// the historical component-based resolution.
+func LayerForRelPathStrict(rel string, layers []string, strict map[string]string) string {
+	parts := strings.Split(filepath.ToSlash(rel), "/")
+	for _, part := range parts {
+		if _, ok := strict[part]; ok && slices.Contains(layers, part) {
+			return part
+		}
+	}
+	return LayerForRelPath(rel, layers)
 }

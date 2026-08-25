@@ -3,6 +3,8 @@ package filelayout
 import (
 	"path/filepath"
 	"testing"
+
+	"github.com/lwmacct/260622-go-pkg-tddcheck/pkg/tddcheck/rulekit"
 )
 
 func TestViolationsChecksStoreContent(t *testing.T) {
@@ -36,7 +38,7 @@ func (s *Store) listDevicesMissingError(ctx context.Context) []string { return n
 		t.Fatal(err)
 	}
 	assertViolationContains(t, violations, "store files must only declare Store receiver methods")
-	assertViolationContains(t, violations, "store method names must start with List, Fetch, Count, Exists, Create, Update, Delete, Upsert, Add, Remove, or Replace")
+	assertViolationContains(t, violations, "store method action is not configured")
 	assertViolationContains(t, violations, "store method names must include a subject after the action")
 	assertViolationContains(t, violations, "store method names must use Action+UpperCamelSubject")
 	assertViolationContains(t, violations, "exported store method subjects must start with Device as an exact resource segment")
@@ -47,6 +49,50 @@ func (s *Store) listDevicesMissingError(ctx context.Context) []string { return n
 	assertViolationContains(t, violations, "List store methods must return a slice and error")
 	assertViolationContains(t, violations, "Delete store methods must return optional bool and error")
 	assertViolationContains(t, violations, "Add store methods must only return error")
+}
+
+func TestViolationsAllowsConfiguredStoreDomainAction(t *testing.T) {
+	root := fixture(t, map[string]string{
+		"internal/repository/device.store.go": `package repository
+import "context"
+func (s *Store) ReserveDevice(ctx context.Context) error { return nil }
+`,
+	})
+
+	config := rulekit.Config{
+		StoreMethodActions: []string{"Reserve"},
+	}
+	violations, err := checkRoot(filepath.Join(root, "internal"), config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(violations) != 0 {
+		t.Fatalf("expected no violations, got %#v", violations)
+	}
+}
+
+func TestViolationsReportsStoreStyleAsWarning(t *testing.T) {
+	root := fixture(t, map[string]string{
+		"internal/repository/device.store.go": `package repository
+import "context"
+func (s *Store) ReserveDevice(ctx context.Context) error { return nil }
+func (s *Store) ListDevice(ctx context.Context) (*string, error) { return nil, nil }
+`,
+	})
+
+	violations, err := checkRoot(filepath.Join(root, "internal"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var warnings int
+	for _, violation := range violations {
+		if violation.Code == "filelayout/store-style" && violation.Severity == rulekit.SeverityWarning {
+			warnings++
+		}
+	}
+	if warnings != 2 {
+		t.Fatalf("expected two store style warnings, got %#v", violations)
+	}
 }
 
 func TestViolationsAllowsStoreActionSubjectNames(t *testing.T) {

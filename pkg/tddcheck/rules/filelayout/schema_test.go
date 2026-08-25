@@ -47,3 +47,19 @@ func BuildUser() {}
 	assertViolationContains(t, violations, "schema receiver methods must use *Model receivers")
 	assertViolationContains(t, violations, "schema package-level functions must be schema lifecycle functions")
 }
+
+func TestViolationsRequireSchemaFunctionSubjectOwnership(t *testing.T) {
+	root := fixture(t, map[string]string{
+		"internal/repository/device.schema.go": `package repository
+type DeviceModel struct{}
+func DeviceSchema() {}
+func UserSchema() {}
+`,
+	})
+
+	violations, err := checkRoot(filepath.Join(root, "internal"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertViolationContains(t, violations, "schema lifecycle functions for device must start with Device")
+}

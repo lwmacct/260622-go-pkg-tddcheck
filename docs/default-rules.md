@@ -18,6 +18,10 @@ internal/repository
 handler -> service -> repository
 ```
 
+默认配置还会校验三个层目录是 analyzed root 的直接子目录，并要求 package 名分别为
+`handler`、`service`、`repository`。自定义层只有显式配置 `LayerPackageNames` 时才启用
+同样的单 package 契约。
+
 默认规则负责：
 
 ```text
@@ -144,13 +148,16 @@ repository: shared, store
 *.context.go      仅 x.http；声明私有 *Key 类型和 Context* / *FromContext helper
 *.endpoint.go     仅 x.http；必须声明 Endpoint struct 和 NewEndpoint
 *.middleware.go   仅 x.http；声明 Middleware、Endpoint receiver 方法和 helper
-*.utils.go        只能声明包级 util* 函数
+*.utils.go        只能声明包级 util* 函数；使用该兼容性角色会产生 warning
 
 *.repository.go   仅 x.store.repository.go；必须声明 Store struct 和 NewStore
-*.schema.go       声明 {Subject}*Model struct、schema 生命周期函数和 *Model receiver hook
+*.schema.go       声明 {Subject}*Model struct、以 subject 开头的 schema 生命周期函数和 *Model receiver hook
 *.store.go        只能声明当前 subject 的 Store receiver 方法
 *.free.go         声明内容不受限制，但产生 warning 并进入 free 文件审计清单
 ```
+
+`utils` 与 `support` 的 helper 能力重叠。新 helper 推荐放入同 subject 的
+`.support.go`；保留 `.utils.go` 仅用于兼容已有代码。
 
 ### Store 方法
 
@@ -165,15 +172,18 @@ List Fetch Count Exists Create Update Delete Upsert Add Remove Replace
 ```text
 第一个参数是 context.Context
 最后一个返回值是 error
-返回值形状与 List/Fetch/Count/Exists 等动作匹配
+返回值形状与 List/Fetch/Count/Exists 等动作匹配（风格检查）
 ```
+
+`StoreMethodActions` 可扩展领域动作。未配置的动作以及 CRUD 返回形状不匹配只产生
+`filelayout/store-style` warning；subject 归属、context、error 和查询实现细节仍是 error。
 
 ### 持久化边界
 
 ```text
-service 文件不得直接依赖 database/sql、gorm、bun、pgx、mongo、firestore、dynamodb 等 API
+service 层所有非 `free` 文件不得直接依赖 database/sql、gorm、bun、pgx、mongo、firestore、dynamodb 等 API
 service 文件不得引用 repository.*Model
-service 公共方法签名不得暴露 repository 的 Model、Row、Patch、Create、Filter 类型
+service 公共方法、公共函数和导出 contract 类型不得暴露 repository 的 Model、Row、Patch、Create、Filter 类型
 service 层的 provider/support/types 不得声明 Bun 持久化 tag
 repository support/types 不得声明 *Model 或 Bun/GORM tag；schema model 放在 .schema.go
 ```
@@ -212,8 +222,18 @@ handler -> service -> repository
 ```
 
 `layerdeps` 检查当前 module 中、能够映射到 analyzed root 和 `DependencyLayerDirs` 的 import。它不检查第三方 module。
+filelayout 中 provider、support 等角色的跨层 import 也通过 package graph 判断，不依赖固定的
+`/internal/service` 字符串路径。
 
 `free` 文件仍参与分层依赖检查。未落在 `LayerDirs` 中的非测试 Go 文件不会被 filelayout 强制改名，但会通过 `Analysis.UnclassifiedFiles` 和生成文档列出。
+设置 `WarnUnclassifiedFiles=true` 后，这些文件还会产生 warning，但不会使分析失败。
+
+可选审计项：
+
+```text
+WarnSubjectPrivateAccess   报告同层不同 subject 间的私有声明访问
+MaxSharedDeclarationLines  限制 x.shared 文件声明规模；0 表示关闭
+```
 
 ## 例外与审计
 
@@ -304,6 +324,11 @@ EscapedSubjectSuffixes     不允许编码进业务 subject 的 kind 或动作�
 ForbiddenWeakSubjects      不允许使用的弱 subject
 PublicTypeBoundarySuffixes service 公共签名禁止暴露的 repository 类型后缀
 MaxSupportDeclarationLines support 声明的最大累计 AST 行跨度；0 表示关闭
+StoreMethodActions         Store 可识别动作；未知动作和返回形状只产生 style warning
+WarnSubjectPrivateAccess   同层跨 subject 私有声明访问 warning
+WarnUnclassifiedFiles      未分类文件 warning
+MaxSharedDeclarationLines  x.shared 声明最大 AST 行跨度；0 表示关闭
+LayerPackageNames          严格层目录对应的 package 名
 ```
 
 slice 或 map 字段为 `nil` 时继承对应默认值。显式空集合用于关闭可选项；`LayerFileNameModes`、`LayerKindPolicies` 等必需的逐层配置仍必须覆盖所有 `LayerDirs`。

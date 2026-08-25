@@ -5,19 +5,21 @@ import (
 	"go/ast"
 	"go/token"
 	"strings"
+
+	"github.com/lwmacct/260622-go-pkg-tddcheck/pkg/tddcheck/rulekit"
 )
 
-func supportViolations(fileSet *token.FileSet, filename string, layer string, name fileName, parsedFile *ast.File, maxDeclarationLines int) []Violation {
+func supportViolations(file rulekit.GoFile, name fileName, maxDeclarationLines int) []Violation {
 	var violations []Violation
-	for _, decl := range parsedFile.Decls {
+	for _, decl := range file.AST.Decls {
 		switch typed := decl.(type) {
 		case *ast.GenDecl:
-			violations = append(violations, declarationGenDeclViolations(fileSet, filename, layer, name, "support", typed)...)
+			violations = append(violations, declarationGenDeclViolations(file, name, "support", typed)...)
 		case *ast.FuncDecl:
-			violations = append(violations, supportFuncViolations(fileSet, filename, layer, typed)...)
+			violations = append(violations, supportFuncViolations(file.Fset, file.AbsPath, file.Layer, typed)...)
 		}
 	}
-	violations = append(violations, supportDeclarationLineViolations(fileSet, filename, name, parsedFile, maxDeclarationLines)...)
+	violations = append(violations, supportDeclarationLineViolations(file.Fset, file.AbsPath, name, file.AST, maxDeclarationLines)...)
 	return violations
 }
 
@@ -29,8 +31,11 @@ func supportDeclarationLineViolations(fileSet *token.FileSet, filename string, n
 	return []Violation{violationAt(fileSet, filename, first, fmt.Sprintf("support declarations occupy %d lines (maximum %d); move types, consts, and Err* vars to %s", lines, maxDeclarationLines, typesFilename(name)))}
 }
 
-func declarationGenDeclViolations(fileSet *token.FileSet, filename string, layer string, name fileName, kind string, decl *ast.GenDecl) []Violation {
+func declarationGenDeclViolations(file rulekit.GoFile, name fileName, kind string, decl *ast.GenDecl) []Violation {
 	var violations []Violation
+	fileSet := file.Fset
+	filename := file.AbsPath
+	layer := file.Layer
 	switch decl.Tok {
 	case token.IMPORT:
 		for _, importSpec := range decl.Specs {
@@ -39,7 +44,7 @@ func declarationGenDeclViolations(fileSet *token.FileSet, filename string, layer
 				continue
 			}
 			path := importPath(spec)
-			if forbiddenSupportImport(layer, path) {
+			if forbiddenSupportImport(file, layer, path) {
 				violations = append(violations, violationAt(fileSet, filename, spec.Pos(), kind+" files must not import "+path))
 			}
 		}
@@ -151,12 +156,19 @@ func camelTokenPrefix(value string, prefix string) bool {
 	return upperRune(rune(value[len(prefix)]))
 }
 
-func forbiddenSupportImport(layer string, importPath string) bool {
+func forbiddenSupportImport(file rulekit.GoFile, layer string, importPath string) bool {
+	targetLayer := ""
+	for _, imported := range file.Imports {
+		if imported.Path == importPath || imported.PackagePath == importPath {
+			targetLayer = imported.TargetLayer
+			break
+		}
+	}
 	switch layer {
 	case "service":
-		return forbiddenServiceModelImport(importPath)
+		return targetLayer == "handler"
 	case "repository":
-		return forbiddenRepositoryModelImport(importPath)
+		return targetLayer == "handler" || targetLayer == "service"
 	default:
 		return false
 	}

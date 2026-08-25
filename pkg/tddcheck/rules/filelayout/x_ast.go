@@ -234,6 +234,45 @@ func lowerCamelIdentifier(value string) bool {
 }
 
 func snakeName(value string) string {
+	return snakeNameWithInitialisms(value, nil)
+}
+
+func snakeNameWithInitialisms(value string, initialisms map[string]string) string {
+	if tokens := camelTokensWithInitialisms(value, initialisms); len(tokens) > 0 {
+		return strings.Join(tokens, "_")
+	}
+	return ""
+}
+
+func camelTokensWithInitialisms(value string, initialisms map[string]string) []string {
+	for _, spelling := range initialismSpellings(initialisms) {
+		value = strings.ReplaceAll(value, spelling, "_"+strings.ToLower(spelling)+"_")
+	}
+	return camelTokens(value)
+}
+
+func initialismSpellings(initialisms map[string]string) []string {
+	values := make(map[string]bool)
+	for _, value := range initialisms {
+		values[value] = true
+	}
+	for _, value := range []string{"API", "HTTP", "ID", "IP", "JSON", "LLM", "OAuth", "RBAC", "SQL", "SSH", "TLS", "URL", "UUID", "WS"} {
+		values[value] = true
+	}
+	result := make([]string, 0, len(values))
+	for value := range values {
+		result = append(result, value)
+	}
+	slices.SortFunc(result, func(a, b string) int {
+		if len(a) != len(b) {
+			return len(b) - len(a)
+		}
+		return strings.Compare(a, b)
+	})
+	return result
+}
+
+func legacySnakeName(value string) string {
 	var builder strings.Builder
 	runes := []rune(value)
 	for index, char := range runes {

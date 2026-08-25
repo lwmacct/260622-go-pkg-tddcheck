@@ -66,6 +66,10 @@ func TestViolationsUseConfiguredInitialisms(t *testing.T) {
 type RBACService struct{}
 func NewRBACService() *RBACService { return &RBACService{} }
 `,
+		"internal/service/auth_oauth.service.go": `package service
+type AuthOAuthService struct{}
+func NewAuthOAuthService() *AuthOAuthService { return &AuthOAuthService{} }
+`,
 	})
 	config := rulekit.DefaultConfig()
 	config.Initialisms["rbac"] = "Rbac"

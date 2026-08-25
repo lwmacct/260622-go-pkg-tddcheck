@@ -17,7 +17,7 @@ func serviceViolations(fileSet *token.FileSet, filename string, name fileName, p
 		expectedServiceName = upperCamelNameWithInitialisms(name.Qualifier(), initialisms) + "Service"
 	}
 	if serviceNameOK {
-		expectedQualifier := snakeName(strings.TrimSuffix(expectedServiceName, "Service"))
+		expectedQualifier := snakeNameWithInitialisms(strings.TrimSuffix(expectedServiceName, "Service"), initialisms)
 		if name.Qualifier() != expectedQualifier {
 			qualifierName := "subject"
 			if name.Namespace != "" {

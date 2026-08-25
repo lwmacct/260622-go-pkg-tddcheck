@@ -11,12 +11,12 @@ import (
 	"github.com/lwmacct/260622-go-pkg-tddcheck/pkg/tddcheck/rulekit"
 )
 
-func inferredSubjectViolations(name fileName, file rulekit.GoFile, _ map[string]string) []Violation {
+func inferredSubjectViolations(name fileName, file rulekit.GoFile, initialisms map[string]string) []Violation {
 	if name.Namespace != "" {
 		return nil
 	}
 	for _, identifier := range fileIdentifiers(file.AST) {
-		if expectedSubject, ok := inferredSnakeSubject(name.Subject, identifier.Name); ok && expectedSubject != name.Subject {
+		if expectedSubject, ok := inferredSnakeSubject(name.Subject, identifier.Name, initialisms); ok && expectedSubject != name.Subject {
 			fileName := displayFilename(file.AbsPath)
 			position := file.Fset.PositionFor(identifier.Pos, true)
 			return []Violation{{
@@ -193,8 +193,8 @@ func fileIdentifiers(parsedFile *ast.File) []fileIdentifier {
 	return identifiers
 }
 
-func inferredSnakeSubject(subject string, identifier string) (string, bool) {
-	tokens := camelTokens(identifier)
+func inferredSnakeSubject(subject string, identifier string, initialisms map[string]string) (string, bool) {
+	tokens := camelTokensWithInitialisms(identifier, initialisms)
 	for start := 0; start < len(tokens); start++ {
 		var joined strings.Builder
 		for end := start; end < len(tokens); end++ {

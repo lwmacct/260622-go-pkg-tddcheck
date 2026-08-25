@@ -130,10 +130,10 @@ func invalidDependency(profile rulekit.Profile, source string, sourceRel string,
 		if source != rule.SourceLayer || target != rule.TargetLayer {
 			continue
 		}
-		if rule.SourceRelPrefix != "" && !strings.HasPrefix(sourceRel, rule.SourceRelPrefix) {
+		if rule.SourceRelPrefix != "" && !pathPrefixMatch(sourceRel, rule.SourceRelPrefix) {
 			continue
 		}
-		if rule.TargetRelPrefix != "" && !strings.HasPrefix(targetRel, rule.TargetRelPrefix) {
+		if rule.TargetRelPrefix != "" && !pathPrefixMatch(targetRel, rule.TargetRelPrefix) {
 			continue
 		}
 		if sourceExcepted(rule, sourceRel) {
@@ -153,7 +153,7 @@ func invalidDependency(profile rulekit.Profile, source string, sourceRel string,
 
 func sourceExcepted(rule rulekit.LayerDependencyRule, sourceRel string) bool {
 	for _, prefix := range rule.ExceptSourceRelPrefixes {
-		if strings.HasPrefix(sourceRel, prefix) {
+		if pathPrefixMatch(sourceRel, prefix) {
 			return true
 		}
 	}
@@ -162,9 +162,15 @@ func sourceExcepted(rule rulekit.LayerDependencyRule, sourceRel string) bool {
 
 func dependencyExcepted(rule rulekit.LayerDependencyRule, targetRel string) bool {
 	for _, prefix := range rule.ExceptTargetRelPrefixes {
-		if strings.HasPrefix(targetRel, prefix) {
+		if pathPrefixMatch(targetRel, prefix) {
 			return true
 		}
 	}
 	return false
+}
+
+func pathPrefixMatch(value string, prefix string) bool {
+	value = strings.Trim(strings.ReplaceAll(value, "\\", "/"), "/")
+	prefix = strings.Trim(strings.ReplaceAll(prefix, "\\", "/"), "/")
+	return prefix == "" || value == prefix || strings.HasPrefix(value, prefix+"/")
 }

@@ -64,12 +64,9 @@ func BuildProvider() {}
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertViolationContains(t, violations, "provider files must not import net/http")
 	assertViolationContains(t, violations, "provider files must not import example.com/app/internal/adapter")
 	assertViolationContains(t, violations, "provider files must not import example.com/app/internal/runtime/nodepool")
 	assertViolationContains(t, violations, "provider files must not import example.com/app/internal/repository")
-	assertViolationContains(t, violations, "provider type ImageAuthChallengeRequest must not use transport or command suffixes")
-	assertViolationContains(t, violations, "provider types must not declare transport or persistence tags")
 	assertViolationContains(t, violations, "provider files must only declare provider types and functions")
 	assertViolationContains(t, violations, "provider package-level functions must start with New")
 }

@@ -225,7 +225,7 @@ func BuildWhatever() {}
 	}
 }
 
-func TestViolationsStillChecksFreeFileNamespace(t *testing.T) {
+func TestViolationsAllowsFreeFileNamespaceOutsideWhitelist(t *testing.T) {
 	root := fixture(t, map[string]string{
 		"internal/service/x.store.free.go": `package service
 func BuildStore() {}
@@ -236,8 +236,7 @@ func BuildStore() {}
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(violations) != 1 {
-		t.Fatalf("expected 1 violation, got %#v", violations)
+	if len(violations) != 0 {
+		t.Fatalf("expected no violations, got %#v", violations)
 	}
-	assertViolationContains(t, violations, `architecture namespace "store" is not allowed in service`)
 }

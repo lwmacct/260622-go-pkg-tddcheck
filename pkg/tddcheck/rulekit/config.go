@@ -42,15 +42,20 @@ type Config struct {
 	EscapedSubjectSuffixes []string `json:"escapedSubjectSuffixes,omitempty"`
 	// ForbiddenWeakSubjects lists ambiguous business subject names.
 	ForbiddenWeakSubjects []string `json:"forbiddenWeakSubjects,omitempty"`
+	// PublicTypeBoundarySuffixes lists repository type suffixes that must not
+	// appear in exported service method signatures. Nil inherits defaults;
+	// an explicit empty slice disables this boundary check.
+	PublicTypeBoundarySuffixes []string `json:"publicTypeBoundarySuffixes,omitempty"`
 }
 
 type Profile struct {
-	Layers                 []LayerProfile
-	DependencyLayers       []string
-	SkipDirs               []string
-	LayerRules             []LayerDependencyRule
-	EscapedSubjectSuffixes []string
-	ForbiddenWeakSubjects  []string
+	Layers                     []LayerProfile
+	DependencyLayers           []string
+	SkipDirs                   []string
+	LayerRules                 []LayerDependencyRule
+	EscapedSubjectSuffixes     []string
+	ForbiddenWeakSubjects      []string
+	PublicTypeBoundarySuffixes []string
 
 	layersByName             map[string]LayerProfile
 	dependencyLayerSet       map[string]bool
@@ -156,7 +161,8 @@ func DefaultConfig() Config {
 			"update",
 			"upsert",
 		},
-		ForbiddenWeakSubjects: []string{"common", "default", "helper", "helpers", "misc", "util", "utils"},
+		ForbiddenWeakSubjects:      []string{"common", "default", "helper", "helpers", "misc", "util", "utils"},
+		PublicTypeBoundarySuffixes: []string{"Model", "Row", "Patch", "Create", "Filter"},
 	}
 }
 
@@ -191,6 +197,9 @@ func (c Config) WithDefaults() Config {
 	}
 	if c.ForbiddenWeakSubjects == nil {
 		c.ForbiddenWeakSubjects = defaults.ForbiddenWeakSubjects
+	}
+	if c.PublicTypeBoundarySuffixes == nil {
+		c.PublicTypeBoundarySuffixes = defaults.PublicTypeBoundarySuffixes
 	}
 	return c
 }
@@ -231,6 +240,7 @@ func (c Config) Compile() (Config, error) {
 	c.ArchitectureNamespaces = cloneStringSlices(c.ArchitectureNamespaces)
 	c.EscapedSubjectSuffixes = slices.Clone(c.EscapedSubjectSuffixes)
 	c.ForbiddenWeakSubjects = slices.Clone(c.ForbiddenWeakSubjects)
+	c.PublicTypeBoundarySuffixes = slices.Clone(c.PublicTypeBoundarySuffixes)
 	return c, nil
 }
 
@@ -315,6 +325,11 @@ func (c Config) ValidateFileLayout() error {
 			return fmt.Errorf("layer %q: %w", layer, err)
 		}
 	}
+	for _, suffix := range c.PublicTypeBoundarySuffixes {
+		if suffix == "" {
+			return fmt.Errorf("public type boundary suffix must not be empty")
+		}
+	}
 	return nil
 }
 
@@ -395,16 +410,17 @@ func (c Config) Profile() Profile {
 		architectureNamespaces[layer] = sliceSet(layerProfile.ArchitectureNamespaces)
 	}
 	return Profile{
-		Layers:                   layers,
-		DependencyLayers:         c.DependencyLayerDirs,
-		SkipDirs:                 c.SkipDirs,
-		LayerRules:               c.LayerRules,
-		EscapedSubjectSuffixes:   c.EscapedSubjectSuffixes,
-		ForbiddenWeakSubjects:    c.ForbiddenWeakSubjects,
-		layersByName:             layersByName,
-		dependencyLayerSet:       sliceSet(c.DependencyLayerDirs),
-		kindPolicyByLayer:        kindPolicies,
-		architectureNamespaceSet: architectureNamespaces,
+		Layers:                     layers,
+		DependencyLayers:           c.DependencyLayerDirs,
+		SkipDirs:                   c.SkipDirs,
+		LayerRules:                 c.LayerRules,
+		EscapedSubjectSuffixes:     c.EscapedSubjectSuffixes,
+		ForbiddenWeakSubjects:      c.ForbiddenWeakSubjects,
+		PublicTypeBoundarySuffixes: slices.Clone(c.PublicTypeBoundarySuffixes),
+		layersByName:               layersByName,
+		dependencyLayerSet:         sliceSet(c.DependencyLayerDirs),
+		kindPolicyByLayer:          kindPolicies,
+		architectureNamespaceSet:   architectureNamespaces,
 	}
 }
 

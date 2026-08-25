@@ -54,11 +54,8 @@ func providerGenDeclViolations(fileSet *token.FileSet, filename string, decl *as
 					providerTypeFound = true
 				}
 			}
-			if forbiddenServiceModelType(typeSpec.Name.Name) {
-				violations = append(violations, violationAt(fileSet, filename, typeSpec.Pos(), "provider type "+typeSpec.Name.Name+" must not use transport or command suffixes"))
-			}
-			if hasStructTag(typeSpec, "bun") || hasStructTag(typeSpec, "json") || hasStructTag(typeSpec, "query") || hasStructTag(typeSpec, "path") {
-				violations = append(violations, violationAt(fileSet, filename, typeSpec.Pos(), "provider types must not declare transport or persistence tags"))
+			if hasStructTag(typeSpec, "bun") {
+				violations = append(violations, violationAt(fileSet, filename, typeSpec.Pos(), "provider types must not declare persistence tags"))
 			}
 		}
 	case token.CONST, token.VAR:

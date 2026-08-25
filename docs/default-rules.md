@@ -20,7 +20,7 @@ layerdeps   分层 import 依赖约束
 vendor/node_modules/dist/build  默认不参与扫描
 ```
 
-Go build constraints、`Config.BuildFlags` 和当前 GOOS/GOARCH 会决定实际文件集合。默认允许 package/type error 并尽力分析；`Config.StrictPackages=true` 会将其视为操作错误。
+Go build constraints、`Config.BuildFlags` 和当前 GOOS/GOARCH 会决定实际文件集合。package/type error 会保留在分析结果中，并使 `Analysis.Passed()` 失败；`Config.StrictPackages=true` 还会在加载阶段直接返回错误。
 
 CLI 可通过 `--config tddcheck.json` 读取配置。JSON 使用 lowerCamel 字段名并拒绝重复或未知字段。
 
@@ -45,7 +45,7 @@ repository
 x.{namespace}.{kind}.go
 ```
 
-`subject` 表示业务主题，不限定为 HTTP/REST resource。`x` 是架构文件标识，`namespace` 必须属于所在层的架构 namespace 白名单，`kind` 仍按所在层允许的文件 kind 检查。
+`subject` 表示业务主题，不限定为 HTTP/REST resource。`x` 是架构文件标识；除 `free` 外，`namespace` 必须属于所在层的架构 namespace 白名单，`kind` 仍按所在层允许的文件 kind 检查。
 
 `subject` 和 `namespace` 都是独立的 lowercase snake_case 组件，`kind` 是单个 lowercase 字母数字原子。多段 kind（例如 `service.handler.go`）、大写、连字符、连续下划线和 kind 中的下划线均不合法。业务 subject 可以与某个 namespace 同名；是否为架构文件只由 `x.` 标识决定。
 
@@ -83,7 +83,7 @@ device.models.go
 device.writes.go
 device.database.go
 helper.utils.go
-x.unknown.free.go
+x.unknown.free.go                                  # free 允许任意合法 namespace
 ```
 
 也可以把某一层改成 `package_kind` 命名模式，此时文件名使用：
@@ -133,7 +133,7 @@ repository:
 
 ```text
 *.support.go      声明类型、const、Err* var、util*/validate*/normalize*/Wrap*/Is*/As* 函数
-*.mapper.go       只能声明包级 To* 函数；禁止 context/database/http/huma/ORM 相关 import
+*.mapper.go       只能声明包级 To* 函数；禁止 context/database/ORM 相关 import
 *.service.go      service 层声明一个 {Subject}Service、New{Subject}Service 和 service receiver 方法
 *.repository.go   repository 层只能用于 x.store.repository.go；必须声明 Store struct 和 NewStore
 *.store.go        repository 层声明 Store receiver 方法；方法需接受 context.Context 且最后返回 error
@@ -146,7 +146,7 @@ repository:
 *.commands.go     只能声明类型；类型名必须以 Request、Response、Result 或 Item 结尾
 *.provider.go     service 层声明 {Subject}Provider、New* 构造和 provider receiver 方法
 *.schema.go       repository 层声明 {Subject}*Model struct、schema 生命周期函数和 *Model receiver hook
-*.free.go         可以声明任意内容；可用于任意合法 subject 或当前层允许的 namespace；会进入分析审计清单
+*.free.go         可以声明任意内容；可用于任意合法 subject 或 namespace，不受 namespace 白名单和 subject 语义规则约束；会进入分析审计清单
 ```
 
 额外约束：
@@ -154,10 +154,9 @@ repository:
 ```text
 service 文件不得直接依赖 database/sql、gorm、bun、pgx、mongo、firestore、dynamodb 等持久化 API
 service 文件不得引用 repository.*Model
-service/provider/support 类型不得使用 DTO、Request、Response、Result、Item 等传输或命令后缀
-service/provider/support 类型不得声明 json/query/path/bun 等传输或持久化 tag
+service 公共方法签名不得暴露 repository 的 Model、Row、Patch、Create、Filter 类型；内部实现和私有方法不受此边界约束
+service/provider/support 类型不得把持久化 tag 放在 support/provider 文件；schema 文件负责 ORM 模型
 repository support 不得声明 *Model 或 ORM tag；schema model 必须放在 .schema.go
-appcmd 作为依赖层启用时，不得 import huma、注册 huma route 或声明 DTO/TDO 类型
 ```
 
 ## 命名规则
@@ -196,6 +195,8 @@ example.com/app/internal/repository/device
 
 所有 `free` 文件只免除 filelayout 的声明内容约束，仍参与分层依赖检查，并通过 `Analysis.FreeFiles`、JSON 和生成的 Markdown 文档公开审计。
 
+未落在 `LayerDirs` 中的非测试 Go 文件不会被 filelayout 强制改名，但会通过 `Analysis.UnclassifiedFiles` 和生成文档列出，便于发现遗漏的架构归属。
+
 ## 架构索引
 
 架构索引是只读分析结果，不参与架构规则是否通过的判定。它复用同一次静态扫描，不连接数据库，也不执行业务代码。
@@ -211,7 +212,7 @@ repository   *.schema.go 中的 *Model、bun table tag、字段 tag 和 ForeignK
 
 架构索引不识别或表达 API endpoint。API 契约应由项目使用的 API 框架或 OpenAPI 工具生成。
 
-JSON 分析 schema 当前为 v2。handler、service、store、table 和 projection 不再输出含义混杂的 `scope` 字符串，而是统一输出：
+JSON 分析 schema 当前为 v3。handler、service、store、table 和 projection 不再输出含义混杂的 `scope` 字符串，而是统一输出：
 
 ```json
 {
@@ -251,6 +252,7 @@ LayerSubjectAnchorKinds qualified-kind 层要求每个业务 subject 必须存�
 ArchitectureNamespaces  每层允许的架构 namespace；配置值不包含 x. 标识
 EscapedSubjectSuffixes  禁止编码进业务 subject 的文件 kind 或动作词
 ForbiddenWeakSubjects   禁止使用的弱业务 subject
+PublicTypeBoundarySuffixes service 公共签名禁止暴露的 repository 类型后缀；显式空 slice 可关闭
 ```
 
 配置的 slice 或 map 字段为 `nil` 时继承默认值；显式设置为非 `nil` 空集合时关闭对应默认项。

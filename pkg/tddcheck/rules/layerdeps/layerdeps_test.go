@@ -113,6 +113,29 @@ import _ "example.com/app/internal/adapter/wsworkspace"
 	assertLayerViolationContains(t, violations, "adapter must not import adapter")
 }
 
+func TestViolationsTreatsPrefixesAsPathSegments(t *testing.T) {
+	root := fixture(t, map[string]string{
+		"internal/adapter/source/endpoint.go": `package source
+import _ "example.com/app/internal/adapter/sshauth-extra"
+`,
+		"internal/adapter/sshauth-extra/service.go": `package sshauthextra
+`,
+	})
+
+	violations, err := checkRoot(filepath.Join(root, "internal"), rulekit.Config{
+		LayerDirs: []string{"adapter"},
+		LayerRules: []rulekit.LayerDependencyRule{{
+			SourceLayer: "adapter", TargetLayer: "adapter", TargetRelPrefix: "adapter/sshauth",
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(violations) != 0 {
+		t.Fatalf("expected adjacent path name not to match prefix, got %#v", violations)
+	}
+}
+
 func TestViolationsUsesDependencyLayerDirsWithoutFileLayoutLayers(t *testing.T) {
 	root := fixture(t, map[string]string{
 		"internal/runtime/nodepool/pool.go": `package nodepool

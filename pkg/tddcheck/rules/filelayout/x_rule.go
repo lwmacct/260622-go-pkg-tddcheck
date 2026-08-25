@@ -52,7 +52,8 @@ func checkFile(_ context.Context, snapshot *rulekit.Snapshot, file rulekit.GoFil
 
 func checkSnapshot(_ context.Context, _ *rulekit.Snapshot, snapshot *rulekit.Snapshot) ([]rulekit.Diagnostic, error) {
 	values := subjectAnchorViolations(snapshot)
-	values = append(values, appcmdTransportViolations(snapshot)...)
+	values = append(values, identityCollisionViolations(snapshot)...)
+	values = append(values, publicTypeBoundaryViolations(snapshot)...)
 	return diagnostics(values), nil
 }
 
@@ -83,7 +84,8 @@ func violationsInSnapshot(snapshot *rulekit.Snapshot) []Violation {
 		violations = append(violations, violationsInFile(snapshot.Profile, file)...)
 	}
 	violations = append(violations, subjectAnchorViolations(snapshot)...)
-	violations = append(violations, appcmdTransportViolations(snapshot)...)
+	violations = append(violations, identityCollisionViolations(snapshot)...)
+	violations = append(violations, publicTypeBoundaryViolations(snapshot)...)
 	return violations
 }
 
@@ -126,6 +128,21 @@ type layoutFile struct {
 
 func layoutFileViolations(context layoutFile) []Violation {
 	var violations []Violation
+	policyID, kindAllowed := context.profile.KindPolicy(context.file.Layer, context.name.Kind)
+	if !kindAllowed {
+		violations = append(violations, Violation{
+			File:    rulekit.DisplayFilename(context.file.AbsPath),
+			Line:    1,
+			Code:    RuleID + "/kind-not-allowed",
+			Message: fmt.Sprintf("%s file kind %q is not allowed", context.file.Layer, context.name.Kind),
+		})
+	}
+	// free is an explicit escape hatch for declaration content and identity
+	// qualifiers. The filename still must be syntactically valid and its kind
+	// must be enabled by the layer profile.
+	if context.name.Kind == "free" {
+		return violations
+	}
 	if context.qualifiedKindMode() && !context.architectureFile() && rulekit.StringIn(context.name.Subject, context.profile.ForbiddenWeakSubjects) {
 		violations = append(violations, Violation{
 			File:    rulekit.DisplayFilename(context.file.AbsPath),
@@ -160,15 +177,6 @@ func layoutFileViolations(context layoutFile) []Violation {
 			})
 		}
 	}
-	policyID, kindAllowed := context.profile.KindPolicy(context.file.Layer, context.name.Kind)
-	if !kindAllowed {
-		violations = append(violations, Violation{
-			File:    rulekit.DisplayFilename(context.file.AbsPath),
-			Line:    1,
-			Code:    RuleID + "/kind-not-allowed",
-			Message: fmt.Sprintf("%s file kind %q is not allowed", context.file.Layer, context.name.Kind),
-		})
-	}
 	if context.qualifiedKindMode() && context.architectureFile() && !context.profile.ArchitectureNamespaceAllowed(context.file.Layer, context.name.Namespace) {
 		violations = append(violations, Violation{
 			File:    rulekit.DisplayFilename(context.file.AbsPath),
@@ -181,9 +189,7 @@ func layoutFileViolations(context layoutFile) []Violation {
 		violations = append(violations, inferredSubjectViolations(context.name, context.file)...)
 	}
 
-	if kindAllowed {
-		violations = append(violations, declarationViolations(context.name, context.file, policyID)...)
-	}
+	violations = append(violations, declarationViolations(context.name, context.file, policyID)...)
 	return violations
 }
 

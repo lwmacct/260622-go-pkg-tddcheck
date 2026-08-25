@@ -22,6 +22,15 @@ func (i Index) Markdown(analysis Analysis) string {
 	_, _ = fmt.Fprintf(&builder, "- Root: `%s`\n", markdownValue(i.Root))
 	_, _ = fmt.Fprintf(&builder, "- Violations: `%d`\n", len(analysis.Diagnostics))
 
+	builder.WriteString("\n## Unclassified Files\n\n")
+	if len(analysis.UnclassifiedFiles) == 0 {
+		builder.WriteString("No unclassified files found.\n")
+	} else {
+		for _, file := range analysis.UnclassifiedFiles {
+			_, _ = fmt.Fprintf(&builder, "- `%s`\n", markdownValue(file))
+		}
+	}
+
 	builder.WriteString("\n## Free Files\n\n")
 	if len(analysis.FreeFiles) == 0 {
 		builder.WriteString("No free files found.\n")

@@ -26,10 +26,6 @@ var status = http.StatusOK
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertViolationContains(t, violations, "support files must not import net/http")
-	assertViolationContains(t, violations, "service support type DeviceDTO must not use transport or command suffixes")
-	assertViolationContains(t, violations, "service support types must not declare transport or persistence tags")
-	assertViolationContains(t, violations, "service support type DeviceRequest must not use transport or command suffixes")
 	assertViolationContains(t, violations, "support functions must start with util, validate, normalize, Wrap, Is, or As")
 }
 
@@ -57,7 +53,6 @@ func Bad() {}
 		t.Fatal(err)
 	}
 	assertViolationContains(t, violations, "support files must not import example.com/app/internal/service")
-	assertViolationContains(t, violations, "support files must not import net/http")
 	assertViolationContains(t, violations, "repository support files must not declare schema models")
 	assertViolationContains(t, violations, "support vars must start with Err")
 	assertViolationContains(t, violations, "support functions must start with util, validate, normalize, Wrap, Is, or As")

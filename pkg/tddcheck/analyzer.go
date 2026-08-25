@@ -19,7 +19,7 @@ import (
 
 const (
 	DefaultDocFile        = "docs/tddcheck.index.gen.md"
-	AnalysisSchemaVersion = "2"
+	AnalysisSchemaVersion = "3"
 )
 
 // ErrMarkdownOutOfDate identifies missing or stale generated documentation.
@@ -65,13 +65,14 @@ func New(options Options, registrars ...func(*Engine)) (*Analyzer, error) {
 
 // Analysis is the stable result of one package load and one engine run.
 type Analysis struct {
-	SchemaVersion string               `json:"schemaVersion"`
-	Root          string               `json:"root"`
-	ModulePath    string               `json:"modulePath"`
-	Index         Index                `json:"index"`
-	FreeFiles     []FreeFile           `json:"freeFiles,omitempty"`
-	Diagnostics   []rulekit.Diagnostic `json:"diagnostics,omitempty"`
-	LoadErrors    []LoadError          `json:"packageErrors,omitempty"`
+	SchemaVersion     string               `json:"schemaVersion"`
+	Root              string               `json:"root"`
+	ModulePath        string               `json:"modulePath"`
+	Index             Index                `json:"index"`
+	FreeFiles         []FreeFile           `json:"freeFiles,omitempty"`
+	UnclassifiedFiles []string             `json:"unclassifiedFiles,omitempty"`
+	Diagnostics       []rulekit.Diagnostic `json:"diagnostics,omitempty"`
+	LoadErrors        []LoadError          `json:"packageErrors,omitempty"`
 
 	Duration    time.Duration `json:"-"`
 	projectRoot string
@@ -98,16 +99,29 @@ func (a *Analyzer) Analyze(ctx context.Context) (Analysis, error) {
 	}
 	index := indexFromSnapshot(snapshot)
 	return Analysis{
-		SchemaVersion: AnalysisSchemaVersion,
-		Root:          index.Root,
-		ModulePath:    index.ModulePath,
-		Index:         index,
-		FreeFiles:     freeFilesFromSnapshot(snapshot),
-		Diagnostics:   diagnostics,
-		LoadErrors:    snapshot.LoadErrors,
-		Duration:      time.Since(start),
-		projectRoot:   snapshot.ProjectRoot,
+		SchemaVersion:     AnalysisSchemaVersion,
+		Root:              index.Root,
+		ModulePath:        index.ModulePath,
+		Index:             index,
+		FreeFiles:         freeFilesFromSnapshot(snapshot),
+		UnclassifiedFiles: unclassifiedFilesFromSnapshot(snapshot),
+		Diagnostics:       diagnostics,
+		LoadErrors:        snapshot.LoadErrors,
+		Duration:          time.Since(start),
+		projectRoot:       snapshot.ProjectRoot,
 	}, nil
+}
+
+func unclassifiedFilesFromSnapshot(snapshot *rulekit.Snapshot) []string {
+	var result []string
+	for _, file := range snapshot.Files {
+		if file.IsTest || file.Layer != "" {
+			continue
+		}
+		result = append(result, snapshot.DisplayPath(file.AbsPath))
+	}
+	slices.Sort(result)
+	return result
 }
 
 // TestOptions controls the artifacts checked or updated by [Assert].

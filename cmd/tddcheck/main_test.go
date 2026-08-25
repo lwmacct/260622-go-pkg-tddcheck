@@ -63,7 +63,7 @@ func NewDeviceService() *DeviceService { return &DeviceService{} }
 	if !strings.Contains(stdout.String(), `"modulePath": "example.com/app"`) {
 		t.Fatalf("expected json module path, got:\n%s", stdout.String())
 	}
-	if !strings.Contains(stdout.String(), `"schemaVersion": "2"`) {
+	if !strings.Contains(stdout.String(), `"schemaVersion": "3"`) {
 		t.Fatalf("expected versioned json schema, got:\n%s", stdout.String())
 	}
 	if strings.Contains(stdout.String(), `"duration"`) {

@@ -42,8 +42,6 @@ func forbiddenMapperImport(importPath string) bool {
 		importPath,
 		"context",
 		"database/sql",
-		"net/http",
-		"github.com/danielgtaylor/huma/v2",
 		"github.com/uptrace/bun",
 		"gorm.io/gorm",
 	)

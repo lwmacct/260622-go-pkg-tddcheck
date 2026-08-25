@@ -41,11 +41,8 @@ func supportGenDeclViolations(fileSet *token.FileSet, filename string, layer str
 				continue
 			}
 			if layer == "service" {
-				if forbiddenServiceModelType(typeSpec.Name.Name) {
-					violations = append(violations, violationAt(fileSet, filename, typeSpec.Pos(), "service support type "+typeSpec.Name.Name+" must not use transport or command suffixes"))
-				}
-				if hasStructTag(typeSpec, "bun") || hasStructTag(typeSpec, "json") || hasStructTag(typeSpec, "query") || hasStructTag(typeSpec, "path") {
-					violations = append(violations, violationAt(fileSet, filename, typeSpec.Pos(), "service support types must not declare transport or persistence tags"))
+				if hasStructTag(typeSpec, "bun") {
+					violations = append(violations, violationAt(fileSet, filename, typeSpec.Pos(), "service support types must not declare persistence tags"))
 				}
 			}
 			if layer == "repository" && forbiddenRepositorySupportTypeName(name, typeSpec.Name.Name) {

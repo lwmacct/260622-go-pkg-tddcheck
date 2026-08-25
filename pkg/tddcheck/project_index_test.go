@@ -42,6 +42,23 @@ type IdentityUserModel struct {
 	Email string ` + "`" + `bun:"email,nullzero"` + "`" + `
 	CreatedAt time.Time ` + "`" + `bun:"created_at,notnull"` + "`" + `
 }
+
+func TestProjectAnalyzeReportsUnclassifiedFiles(t *testing.T) {
+	root := fixture(t, map[string]string{
+		"internal/runtime/worker.go": "package runtime\nfunc Run() {}\n",
+	})
+
+	analysis, err := analyzeRoot(filepath.Join(root, "internal"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(analysis.UnclassifiedFiles) != 1 || analysis.UnclassifiedFiles[0] != "internal/runtime/worker.go" {
+		t.Fatalf("unexpected unclassified files: %#v", analysis.UnclassifiedFiles)
+	}
+	if !strings.Contains(analysis.Markdown(), "## Unclassified Files") || !strings.Contains(analysis.Markdown(), "internal/runtime/worker.go") {
+		t.Fatalf("expected unclassified inventory in markdown, got:\n%s", analysis.Markdown())
+	}
+}
 func (*IdentityUserModel) BeforeCreateTable(_ context.Context, query *bun.CreateTableQuery) error {
 	query.ForeignKey("(id) REFERENCES accounts (user_id) ON DELETE CASCADE")
 	return nil

@@ -1,6 +1,7 @@
 package tddcheck
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/lwmacct/260622-go-pkg-tddcheck/pkg/tddcheck/rulekit"
@@ -26,6 +27,9 @@ const (
 )
 
 func (a Analysis) Passed() bool {
+	if len(a.LoadErrors) > 0 {
+		return false
+	}
 	for _, diagnostic := range a.Diagnostics {
 		if diagnostic.Severity == SeverityError {
 			return false
@@ -52,8 +56,15 @@ func (a Analysis) Text() string {
 	if a.Passed() {
 		return "tddcheck: passed"
 	}
-	lines := make([]string, 0, len(a.Diagnostics)+1)
+	lines := make([]string, 0, len(a.Diagnostics)+len(a.LoadErrors)+1)
 	lines = append(lines, "tddcheck: failed")
+	for _, loadError := range a.LoadErrors {
+		position := loadError.PackagePath
+		if loadError.Position != "" {
+			position += ":" + loadError.Position
+		}
+		lines = append(lines, fmt.Sprintf("%s [package/%s] %s", position, loadError.Kind, loadError.Message))
+	}
 	for _, diagnostic := range a.Diagnostics {
 		lines = append(lines, diagnostic.String())
 	}

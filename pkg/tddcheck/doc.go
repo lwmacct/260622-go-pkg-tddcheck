@@ -7,14 +7,17 @@
 //
 // # Quick start
 //
-// Tests can enforce the default handler/service/repository profile with:
+// Tests can enforce the default handler/service/repository profile and check
+// generated architecture documentation with:
 //
 //	func TestArchitecture(t *testing.T) {
 //		analyzer, err := tddcheck.New(tddcheck.Options{Root: "internal"})
 //		if err != nil {
 //			t.Fatal(err)
 //		}
-//		tddcheck.Assert(t, analyzer)
+//		tddcheck.Assert(t, analyzer, tddcheck.TestOptions{
+//			Markdown: &tddcheck.MarkdownTestOptions{},
+//		})
 //	}
 //
 // Programs should call [Analyzer.Analyze] with their own context. Operational

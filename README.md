@@ -4,62 +4,74 @@
 
 默认架构包含 `handler`、`service` 和 `repository` 三层，也可以通过 `Config` 定义项目自己的分层和依赖规则。
 
-## 安装
+## 测试依赖
 
 ```bash
-go install github.com/lwmacct/260622-go-pkg-tddcheck/cmd/tddcheck@latest
+go get github.com/lwmacct/260622-go-pkg-tddcheck/pkg/tddcheck@latest
 ```
 
 ## 快速开始
 
-在命令行检查默认的 `internal` 目录：
-
-```bash
-tddcheck check --root internal
-```
-
-也可以把架构检查固定为项目测试：
+以单元测试作为架构检查和文档维护的主入口：
 
 ```go
 package tddcheck_test
 
 import (
+	"flag"
 	"testing"
 
 	"github.com/lwmacct/260622-go-pkg-tddcheck/pkg/tddcheck"
 )
+
+var update = flag.Bool("update", false, "update tddcheck documentation")
 
 func TestArchitecture(t *testing.T) {
 	analyzer, err := tddcheck.New(tddcheck.Options{Root: "internal"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	tddcheck.Assert(t, analyzer)
+	tddcheck.Assert(t, analyzer, tddcheck.TestOptions{
+		Markdown: &tddcheck.MarkdownTestOptions{Update: *update},
+	})
 }
 ```
 
-## CLI
-
-```text
-tddcheck check    运行架构检查
-tddcheck index    输出架构索引
-tddcheck doc      生成 Markdown 架构文档
-tddcheck version  输出版本
-```
-
-常用命令：
+日常检查和显式更新文档分别使用：
 
 ```bash
-tddcheck index --root internal
-tddcheck index --root internal --format json
-tddcheck doc --root internal --output docs/tddcheck.index.gen.md
-tddcheck doc --check --root internal --output docs/tddcheck.index.gen.md
-tddcheck check --root internal --config tddcheck.json
+go test -count=1 ./internal/testutil/tddcheck
+go test -count=1 ./internal/testutil/tddcheck -update
+```
+
+普通测试只检查 `docs/tddcheck.index.gen.md` 是否漂移，不修改工作区；`-update` 才会在规则全部通过后原子更新文档。
+
+## Go Tool
+
+CLI 是辅助入口，应通过 Go 1.27 tool directive 固定到项目版本，无需全局安装：
+
+```bash
+go get -tool github.com/lwmacct/260622-go-pkg-tddcheck/cmd/tddcheck@latest
+```
+
+```text
+go tool tddcheck check    运行架构检查
+go tool tddcheck index    输出架构索引
+go tool tddcheck doc      生成 Markdown 架构文档
+go tool tddcheck version  输出固定的模块版本
+```
+
+辅助命令：
+
+```bash
+go tool tddcheck index --root internal
+go tool tddcheck index --root internal --format json
+go tool tddcheck check --root internal --config tddcheck.json
 ```
 
 配置文件使用 `Config` 的 lowerCamel JSON 字段名。解析采用 `encoding/json/v2` 严格语义：重复字段、未知字段和无效 UTF-8 会直接失败。
 
-CLI 只接受完整长参数，例如 `--root`、`--format` 和 `--output`。直接运行 `tddcheck` 等同于检查默认的 `internal` 目录。
+工具只接受完整长参数，例如 `--root`、`--format` 和 `--output`。直接运行 `go tool tddcheck` 等同于检查默认的 `internal` 目录。
 
 退出码：
 
@@ -69,18 +81,12 @@ CLI 只接受完整长参数，例如 `--root`、`--format` 和 `--output`。直
 2  参数、项目解析或输出操作失败
 ```
 
-在源码仓库中也可以直接运行：
-
-```bash
-go run ./cmd/tddcheck check --root internal
-```
-
 ## 文档
 
 - [Go 包文档](https://pkg.go.dev/github.com/lwmacct/260622-go-pkg-tddcheck/pkg/tddcheck)：`Analyzer`、`Analysis`、配置和架构索引 API。
 - [默认规则与配置](docs/default-rules.md)：默认分层、文件类型、内容规则、依赖方向和自定义示例。
 
-`Analyzer.Analyze(ctx)` 返回带稳定 code、可选修复建议和源码范围的结构化诊断，以及使用 `FileIdentity` 的 schema v2 架构索引和 free 文件审计清单；测试可使用 `tddcheck.Assert`。生成并提交架构索引文档时，可以使用 CLI 的 `doc` 命令或 `Analysis.WriteMarkdown`，并用 `doc --check` 或 `Analysis.CheckMarkdown` 检查漂移。
+`Analyzer.Analyze(ctx)` 返回带稳定 code、可选修复建议和源码范围的结构化诊断，以及使用 `FileIdentity` 的 schema v2 架构索引和 free 文件审计清单。`tddcheck.Assert` 在一次分析中完成规则断言与文档检查/更新；`Analysis.WriteMarkdown` 和 `Analysis.CheckMarkdown` 供非测试集成使用。
 
 源码通过 Go package loader 加载，因此 build tags、平台文件、import alias 和 package graph 都按真实构建视图处理。`Config.IncludeTests` 可包含测试变体，`Config.StrictPackages` 可要求所有 package 完整通过类型检查。
 

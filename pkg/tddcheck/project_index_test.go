@@ -210,6 +210,33 @@ func NewDeviceService() *DeviceService { return &DeviceService{} }
 	}
 }
 
+func TestAssertUpdatesAndChecksMarkdownFromOneAnalysis(t *testing.T) {
+	root := fixture(t, map[string]string{
+		"internal/service/device.service.go": `package service
+type DeviceService struct{}
+func NewDeviceService() *DeviceService { return &DeviceService{} }
+`,
+	})
+	analyzer, err := New(Options{Root: filepath.Join(root, "internal")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	output := filepath.Join(root, "docs", "index.md")
+	Assert(t, analyzer, TestOptions{
+		Markdown: &MarkdownTestOptions{OutputFile: output, Update: true},
+	})
+	Assert(t, analyzer, TestOptions{
+		Markdown: &MarkdownTestOptions{OutputFile: output},
+	})
+	entries, err := os.ReadDir(filepath.Dir(output))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 || entries[0].Name() != filepath.Base(output) {
+		t.Fatalf("expected atomic writer to clean temporary files, got %#v", entries)
+	}
+}
+
 func TestProjectAnalyzeInventoriesFreeFiles(t *testing.T) {
 	root := fixture(t, map[string]string{
 		"internal/handler/device.free.go":   "package handler\nfunc DeviceAnything() {}\n",

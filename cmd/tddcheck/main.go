@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"runtime/debug"
 	"strings"
 	"syscall"
 
@@ -40,7 +41,7 @@ func runWithArgs(ctx context.Context, args []string, stdout io.Writer, stderr io
 	case "doc":
 		return runDoc(ctx, args[1:], stdout, stderr)
 	case "version":
-		_, _ = fmt.Fprintln(stdout, version)
+		_, _ = fmt.Fprintln(stdout, resolvedVersion())
 		return 0
 	case "help", "--help":
 		writeUsage(stderr)
@@ -53,6 +54,18 @@ func runWithArgs(ctx context.Context, args []string, stdout io.Writer, stderr io
 		writeUsage(stderr)
 		return 2
 	}
+}
+
+func resolvedVersion() string {
+	if version != "" && version != "dev" {
+		return version
+	}
+	if buildInfo, ok := debug.ReadBuildInfo(); ok &&
+		buildInfo.Main.Version != "" &&
+		buildInfo.Main.Version != "(devel)" {
+		return buildInfo.Main.Version
+	}
+	return "dev"
 }
 
 func runCheck(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer) int {

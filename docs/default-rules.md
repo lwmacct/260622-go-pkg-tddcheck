@@ -229,10 +229,11 @@ JSON 分析 schema 当前为 v2。handler、service、store、table 和 projecti
 
 每条结构化诊断包含稳定的 `ruleId` 和细分 `code`，例如 `filelayout/invalid-filename`、`filelayout/missing-subject-anchor`、`filelayout/namespace-not-allowed` 和 `layerdeps/forbidden-import`。可机械迁移的问题可包含 `suggestedFix`；旧式 `x_http.*.go` 命名会提供结构化 rename fix。
 
-生成文档后可在 CI 中检查漂移，检查模式不会写文件：
+推荐通过单元测试同时检查规则和文档漂移；显式传入测试定义的 `-update` flag 时才更新文档：
 
 ```bash
-tddcheck doc --check --root internal --output docs/tddcheck.index.gen.md
+go test -count=1 ./internal/testutil/tddcheck
+go test -count=1 ./internal/testutil/tddcheck -update
 ```
 
 ## 自定义配置

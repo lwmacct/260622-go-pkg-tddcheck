@@ -110,15 +110,48 @@ func (a *Analyzer) Analyze(ctx context.Context) (Analysis, error) {
 	}, nil
 }
 
-// Assert is the testing adapter for the core context-aware analyzer API.
-func Assert(tb testing.TB, analyzer *Analyzer) {
+// TestOptions controls the artifacts checked or updated by [Assert].
+type TestOptions struct {
+	// Markdown enables generated architecture documentation checks when non-nil.
+	Markdown *MarkdownTestOptions
+}
+
+// MarkdownTestOptions controls generated Markdown handling in [Assert].
+type MarkdownTestOptions struct {
+	// OutputFile is absolute or relative to the analyzed module. An empty value
+	// selects [DefaultDocFile].
+	OutputFile string
+	// Update writes the current document instead of checking for drift.
+	Update bool
+}
+
+// Assert analyzes once, fails the test on rule violations, and then checks or
+// updates configured artifacts.
+func Assert(tb testing.TB, analyzer *Analyzer, options TestOptions) {
 	tb.Helper()
-	analysis, err := analyzer.Analyze(context.Background())
+	analysis, err := analyzer.Analyze(tb.Context())
 	if err != nil {
 		tb.Fatal(err)
 	}
 	if !analysis.Passed() {
 		tb.Fatal(analysis.Text())
+	}
+	if options.Markdown == nil {
+		return
+	}
+	if options.Markdown.Update {
+		if err := analysis.WriteMarkdown(options.Markdown.OutputFile); err != nil {
+			tb.Fatal(err)
+		}
+		outputFile := options.Markdown.OutputFile
+		if outputFile == "" {
+			outputFile = DefaultDocFile
+		}
+		tb.Logf("tddcheck: wrote %s", outputFile)
+		return
+	}
+	if err := analysis.CheckMarkdown(options.Markdown.OutputFile); err != nil {
+		tb.Fatal(err)
 	}
 }
 
@@ -131,7 +164,7 @@ func (a Analysis) WriteMarkdown(outputFile string) error {
 	if err := os.MkdirAll(filepath.Dir(outputPath), 0o750); err != nil {
 		return err
 	}
-	return os.WriteFile(outputPath, []byte(a.Markdown()), 0o644)
+	return writeFileAtomic(outputPath, []byte(a.Markdown()), 0o644)
 }
 
 // CheckMarkdown reports whether outputFile exactly matches the current
@@ -165,6 +198,31 @@ func (a Analysis) markdownPath(outputFile string) (string, error) {
 		return "", fmt.Errorf("relative output requires an analysis produced by Analyzer.Analyze")
 	}
 	return filepath.Join(a.projectRoot, filepath.FromSlash(outputFile)), nil
+}
+
+func writeFileAtomic(filename string, data []byte, mode os.FileMode) error {
+	temporary, err := os.CreateTemp(filepath.Dir(filename), "."+filepath.Base(filename)+".*")
+	if err != nil {
+		return err
+	}
+	temporaryName := temporary.Name()
+	defer func() {
+		_ = temporary.Close()
+		_ = os.Remove(temporaryName)
+	}()
+	if err := temporary.Chmod(mode); err != nil {
+		return err
+	}
+	if _, err := temporary.Write(data); err != nil {
+		return err
+	}
+	if err := temporary.Sync(); err != nil {
+		return err
+	}
+	if err := temporary.Close(); err != nil {
+		return err
+	}
+	return os.Rename(temporaryName, filename)
 }
 
 func freeFilesFromSnapshot(snapshot *rulekit.Snapshot) []FreeFile {

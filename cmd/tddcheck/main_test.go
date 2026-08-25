@@ -227,6 +227,17 @@ func TestRunWithArgsPrintsUsage(t *testing.T) {
 	}
 }
 
+func TestResolvedVersionPrefersInjectedVersion(t *testing.T) {
+	original := version
+	version = "v9.8.7"
+	t.Cleanup(func() {
+		version = original
+	})
+	if got := resolvedVersion(); got != "v9.8.7" {
+		t.Fatalf("resolvedVersion() = %q, want v9.8.7", got)
+	}
+}
+
 func cliFixture(t *testing.T, files map[string]string) string {
 	t.Helper()
 

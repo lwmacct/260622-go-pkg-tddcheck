@@ -12,13 +12,13 @@ func TestCompileDeepCopiesConfiguration(t *testing.T) {
 	input.LayerKindPolicies["handler"]["free"] = "changed"
 	input.LayerSubjectAnchorKinds["service"] = "changed"
 	input.Initialisms[0] = "custom"
-	input.InitialismOverrides["rbac"] = "Rbac"
+	input.InitialismOverrides["oauth"] = "openAuth"
 	input.SubjectOwnershipModes = map[string]map[string]string{"handler": {"dto": "off"}}
 	if compiled.LayerDirs[0] != "handler" ||
 		compiled.LayerKindPolicies["handler"]["free"] != "free" ||
 		compiled.LayerSubjectAnchorKinds["service"] != "service" ||
 		compiled.Initialisms[0] != "api" ||
-		compiled.InitialismOverrides["rbac"] != "RBAC" ||
+		compiled.InitialismOverrides["oauth"] != "OAuth" ||
 		len(compiled.SubjectOwnershipModes) != 0 {
 		t.Fatalf("compiled config retained caller-owned data: %#v", compiled)
 	}
@@ -36,8 +36,8 @@ func TestCompileBuildsEffectiveInitialisms(t *testing.T) {
 	if profile.Initialisms["api"] != "API" || profile.Initialisms["http"] != "HTTP" || profile.Initialisms["oauth"] != "OAuth" {
 		t.Fatalf("unexpected effective initialisms: %#v", profile.Initialisms)
 	}
-	if _, ok := profile.Initialisms["rbac"]; ok {
-		t.Fatalf("default overrides should be replaceable, got %#v", profile.Initialisms)
+	if profile.Initialisms["rbac"] != "" {
+		t.Fatalf("default initialisms should be replaceable, got %#v", profile.Initialisms)
 	}
 }
 

@@ -72,8 +72,6 @@ func NewAuthOAuthService() *AuthOAuthService { return &AuthOAuthService{} }
 `,
 	})
 	config := rulekit.DefaultConfig()
-	config.Initialisms = append(config.Initialisms, "rbac")
-	config.InitialismOverrides["rbac"] = "RBAC"
 	violations, err := checkRoot(filepath.Join(root, "internal"), config)
 	if err != nil {
 		t.Fatal(err)

@@ -346,10 +346,9 @@ slice 或 map 字段为 `nil` 时继承对应默认值。显式空集合用于�
   "subjectOwnershipModes": {
     "handler": {"dto": "warning"}
   },
-  "initialisms": ["api", "http", "uuid"],
+  "initialisms": ["api", "http", "rbac", "uuid"],
   "initialismOverrides": {
-    "oauth": "OAuth",
-    "rbac": "RBAC"
+    "oauth": "OAuth"
   },
   "failOnWarnings": true
 }

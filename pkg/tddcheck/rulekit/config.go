@@ -211,9 +211,9 @@ func DefaultConfig() Config {
 		PublicTypeBoundarySuffixes: []string{"Model", "Row", "Patch", "Create", "Filter"},
 		StoreMethodActions:         []string{"List", "Fetch", "Count", "Exists", "Create", "Update", "Delete", "Upsert", "Add", "Remove", "Replace"},
 		Initialisms: []string{
-			"api", "http", "id", "ip", "json", "llm", "sql", "ssh", "tls", "url", "uuid", "ws",
+			"api", "http", "id", "ip", "json", "llm", "rbac", "sql", "ssh", "tls", "url", "uuid", "ws",
 		},
-		InitialismOverrides: map[string]string{"oauth": "OAuth", "rbac": "RBAC"},
+		InitialismOverrides: map[string]string{"oauth": "OAuth"},
 	}
 }
 

@@ -160,6 +160,20 @@ service 公共方法签名不得暴露 repository 的 Model、Row、Patch、Crea
 service/provider/support/types 类型不得把持久化 tag 放在这些文件；schema 文件负责 ORM 模型
 repository support/types 不得声明 *Model 或 ORM tag；schema model 必须放在 .schema.go
 MaxSupportDeclarationLines 大于 0 时，support 中 type、const、var 声明的 AST 行跨度累计超过门槛即要求拆到同 subject/namespace 的 .types.go；import、函数和空白行不计入
+
+SchemaInvariants 可声明必须存在的 schema 级业务不变量。例如：
+
+```go
+SchemaInvariants: []tddcheck.SchemaInvariant{
+    {
+        Subject: "resource_ledger",
+        Table:   "resource_consumptions",
+        Unique:  [][]string{{"user_id", "idempotency_key"}},
+    },
+}
+```
+
+每个 `Unique` 项必须在对应 `.schema.go` 模型的 Bun tags 中由同一个 `unique:<group>` 组合表达；单列唯一也可使用 `unique`。缺少模型或组合约束会产生 `invariants/missing-model` 或 `invariants/missing-unique-group` 错误。该规则只验证显式声明的 schema 不变量，不推断事务、行锁、幂等参数比较或并发行为。
 ```
 
 ## 命名规则
@@ -257,6 +271,7 @@ EscapedSubjectSuffixes  禁止编码进业务 subject 的文件 kind 或动作�
 ForbiddenWeakSubjects   禁止使用的弱业务 subject
 PublicTypeBoundarySuffixes service 公共签名禁止暴露的 repository 类型后缀；显式空 slice 可关闭
 MaxSupportDeclarationLines support 中 type、const、var 声明的最大累计行数；0 表示关闭
+SchemaInvariants 显式声明必须存在的 schema 组合唯一约束；空值表示不启用领域不变量检查
 ```
 
 配置的 slice 或 map 字段为 `nil` 时继承默认值；显式设置为非 `nil` 空集合时关闭对应默认项。

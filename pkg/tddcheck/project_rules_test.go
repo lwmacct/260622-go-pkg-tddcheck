@@ -102,10 +102,10 @@ import _ "example.com/app/internal/repository"
 		t.Fatal("expected failure")
 	}
 	text := analysis.Text()
-	if !strings.Contains(text, "[filelayout]") {
+	if !strings.Contains(text, "[filelayout/invalid-filename]") {
 		t.Fatalf("expected filelayout violation, got:\n%s", text)
 	}
-	if !strings.Contains(text, "[layerdeps]") {
+	if !strings.Contains(text, "[layerdeps/forbidden-import]") {
 		t.Fatalf("expected layerdeps violation, got:\n%s", text)
 	}
 }
@@ -126,8 +126,8 @@ import _ "example.com/app/internal/adapter/wsworkspace"
 		LayerFileNameModes: map[string]string{
 			"adapter": FileNameModePackageKind,
 		},
-		LayerFileKinds: map[string][]string{
-			"adapter": {"endpoint"},
+		LayerKindPolicies: map[string]map[string]string{
+			"adapter": {"endpoint": "free"},
 		},
 		ArchitectureNamespaces: map[string][]string{},
 		LayerRules: []LayerDependencyRule{
@@ -177,7 +177,7 @@ func NewDeviceService() *DeviceService { return &DeviceService{} }
 	if !analysis.Passed() {
 		t.Fatal("warning diagnostics must not fail the analysis")
 	}
-	if len(analysis.Diagnostics) != 1 || analysis.Diagnostics[0].RuleID != "custom-file" {
+	if len(analysis.Diagnostics) != 1 || analysis.Diagnostics[0].RuleID != "custom-file" || analysis.Diagnostics[0].Code != "custom-file" {
 		t.Fatalf("custom rule did not run: %#v", analysis.Diagnostics)
 	}
 }

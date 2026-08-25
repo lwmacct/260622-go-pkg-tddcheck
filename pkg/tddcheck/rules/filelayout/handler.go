@@ -11,7 +11,7 @@ import (
 
 func handlerViolations(fileSet *token.FileSet, filename string, name fileName, parsedFile *ast.File) []Violation {
 	var violations []Violation
-	expectedHandlerName := lowerCamelName(name.subject) + "Handler"
+	expectedHandlerName := lowerCamelName(name.Subject) + "Handler"
 	hasHandlerType := false
 	hasRegister := false
 

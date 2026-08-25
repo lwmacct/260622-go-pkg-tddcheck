@@ -1,6 +1,9 @@
 package filelayout
 
 import (
+	"fmt"
+	"slices"
+
 	"github.com/lwmacct/260622-go-pkg-tddcheck/pkg/tddcheck/rulekit"
 )
 
@@ -10,62 +13,68 @@ type declContext struct {
 }
 
 type declPolicy struct {
-	kind  string
-	match func(declContext) bool
-	check func(declContext) []Violation
+	layers    []string
+	namespace string
+	check     func(declContext) []Violation
 }
 
-func declarationViolations(name fileName, file rulekit.GoFile) []Violation {
+func declarationViolations(name fileName, file rulekit.GoFile, policyID string) []Violation {
 	context := declContext{name: name, file: file}
-	for _, policy := range defaultDeclPolicies {
-		if policy.kind != name.kind {
-			continue
-		}
-		if policy.match != nil && !policy.match(context) {
-			continue
-		}
-		return policy.check(context)
+	policy, ok := defaultDeclPolicies[policyID]
+	if !ok {
+		return []Violation{{
+			File:    rulekit.DisplayFilename(file.AbsPath),
+			Line:    1,
+			Code:    RuleID + "/unknown-policy",
+			Message: fmt.Sprintf("file kind %q references unknown declaration policy %q", name.Kind, policyID),
+		}}
 	}
-	return nil
+	if policy.namespace != "" && name.Namespace != policy.namespace {
+		return []Violation{{
+			File:    rulekit.DisplayFilename(file.AbsPath),
+			Line:    1,
+			Code:    RuleID + "/policy-location",
+			Message: fmt.Sprintf("file kind %q requires architecture namespace %q", name.Kind, policy.namespace),
+		}}
+	}
+	return policy.check(context)
 }
 
 func (c declContext) layer() string {
 	return c.file.Layer
 }
 
-var defaultDeclPolicies = []declPolicy{
-	{kind: "free", check: allowAnyDeclarations},
-	{kind: "context", match: architectureLayerNamespace("handler", "http"), check: checkArchitectureContext},
-	{kind: "endpoint", match: architectureLayerNamespace("handler", "http"), check: checkArchitectureEndpoint},
-	{kind: "dto", check: checkDTO},
-	{kind: "handler", match: layer("handler"), check: checkHandler},
-	{kind: "mapper", check: checkMapper},
-	{kind: "middleware", match: architectureLayerNamespace("handler", "http"), check: checkArchitectureMiddleware},
-	{kind: "commands", check: checkCommands},
-	{kind: "provider", match: layer("service"), check: checkProvider},
-	{kind: "utils", check: checkUtils},
-	{kind: "support", match: architectureSupport, check: checkArchitectureSupport},
-	{kind: "support", check: checkSupport},
-	{kind: "service", match: layer("service"), check: checkService},
-	{kind: "store", match: layer("repository"), check: checkStore},
-	{kind: "schema", match: layer("repository"), check: checkSchema},
-	{kind: "repository", match: layer("repository"), check: checkRepository},
+var defaultDeclPolicies = map[string]declPolicy{
+	"free":       {check: allowAnyDeclarations},
+	"context":    {layers: []string{"handler"}, namespace: "http", check: checkArchitectureContext},
+	"endpoint":   {layers: []string{"handler"}, namespace: "http", check: checkArchitectureEndpoint},
+	"dto":        {check: checkDTO},
+	"handler":    {layers: []string{"handler"}, check: checkHandler},
+	"mapper":     {check: checkMapper},
+	"middleware": {layers: []string{"handler"}, namespace: "http", check: checkArchitectureMiddleware},
+	"commands":   {layers: []string{"service"}, check: checkCommands},
+	"provider":   {layers: []string{"service"}, check: checkProvider},
+	"utils":      {check: checkUtils},
+	"support":    {check: checkSupport},
+	"service":    {layers: []string{"service"}, check: checkService},
+	"store":      {layers: []string{"repository"}, check: checkStore},
+	"schema":     {layers: []string{"repository"}, check: checkSchema},
+	"repository": {layers: []string{"repository"}, namespace: "store", check: checkRepository},
 }
 
-func layer(value string) func(declContext) bool {
-	return func(context declContext) bool {
-		return context.layer() == value
+func ValidateProfile(profile rulekit.Profile) error {
+	for _, layer := range profile.Layers {
+		for kind, policyID := range layer.KindPolicies {
+			policy, ok := defaultDeclPolicies[policyID]
+			if !ok {
+				return fmt.Errorf("layer %q file kind %q references unknown declaration policy %q", layer.Name, kind, policyID)
+			}
+			if len(policy.layers) > 0 && !slices.Contains(policy.layers, layer.Name) {
+				return fmt.Errorf("declaration policy %q is not available in layer %q", policyID, layer.Name)
+			}
+		}
 	}
-}
-
-func architectureLayerNamespace(layerValue string, namespace string) func(declContext) bool {
-	return func(context declContext) bool {
-		return context.layer() == layerValue && context.name.namespace == namespace
-	}
-}
-
-func architectureSupport(context declContext) bool {
-	return context.layer() == "handler" && context.name.namespace == "http"
+	return nil
 }
 
 func allowAnyDeclarations(declContext) []Violation {
@@ -85,7 +94,7 @@ func checkDTO(context declContext) []Violation {
 }
 
 func checkHandler(context declContext) []Violation {
-	if context.name.namespace != "" {
+	if context.name.Namespace != "" {
 		return architectureHandlerViolations(context.file.Fset, context.file.AbsPath, context.file.AST)
 	}
 	return handlerViolations(context.file.Fset, context.file.AbsPath, context.name, context.file.AST)
@@ -116,6 +125,9 @@ func checkArchitectureSupport(context declContext) []Violation {
 }
 
 func checkSupport(context declContext) []Violation {
+	if context.layer() == "handler" && context.name.Namespace == "http" {
+		return checkArchitectureSupport(context)
+	}
 	return supportViolations(context.file.Fset, context.file.AbsPath, context.layer(), context.name, context.file.AST)
 }
 

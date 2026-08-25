@@ -41,7 +41,7 @@ func NewImageCaptchaProvider() *ImageCaptchaProvider { return &ImageCaptchaProvi
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertViolationContains(t, violations, `service subject "image_captcha" must declare image_captcha.service.go with NewImageCaptchaService`)
+	assertViolationContains(t, violations, `service subject "image_captcha" must declare image_captcha.service.go as its anchor`)
 }
 
 func TestProviderFilesRejectTransportAndPersistenceCoupling(t *testing.T) {

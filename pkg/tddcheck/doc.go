@@ -38,7 +38,8 @@
 // # Index and output
 //
 // The same analysis-local Snapshot drives diagnostics and the architecture [Index].
-// [Analysis.Markdown] renders generated documentation and
-// [Analysis.WriteMarkdown] writes it relative to the analyzed module. The CLI
-// emits schema-versioned JSON with encoding/json/v2.
+// [Analysis.Markdown] renders generated documentation,
+// [Analysis.WriteMarkdown] writes it relative to the analyzed module, and
+// [Analysis.CheckMarkdown] detects committed-document drift without writing.
+// The CLI emits schema-versioned JSON with encoding/json/v2.
 package tddcheck

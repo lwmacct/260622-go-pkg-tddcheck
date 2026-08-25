@@ -47,10 +47,10 @@ func validateDevice() {}
 
 func TestParseFileNameSeparatesArchitectureNamespace(t *testing.T) {
 	tests := map[string]fileName{
-		"device_group.service.go": {subject: "device_group", kind: "service"},
-		"device.free.go":          {subject: "device", kind: "free"},
-		"x.http.endpoint.go":      {namespace: "http", kind: "endpoint"},
-		"x.shared.free.go":        {namespace: "shared", kind: "free"},
+		"device_group.service.go": {Subject: "device_group", Kind: "service"},
+		"device.free.go":          {Subject: "device", Kind: "free"},
+		"x.http.endpoint.go":      {Namespace: "http", Kind: "endpoint"},
+		"x.shared.free.go":        {Namespace: "shared", Kind: "free"},
 	}
 	for base, want := range tests {
 		got, ok := parseFileName(base, rulekit.FileNameModeQualifiedKind)

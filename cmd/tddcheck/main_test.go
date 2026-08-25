@@ -63,7 +63,7 @@ func NewDeviceService() *DeviceService { return &DeviceService{} }
 	if !strings.Contains(stdout.String(), `"modulePath": "example.com/app"`) {
 		t.Fatalf("expected json module path, got:\n%s", stdout.String())
 	}
-	if !strings.Contains(stdout.String(), `"schemaVersion": "1"`) {
+	if !strings.Contains(stdout.String(), `"schemaVersion": "2"`) {
 		t.Fatalf("expected versioned json schema, got:\n%s", stdout.String())
 	}
 	if strings.Contains(stdout.String(), `"duration"`) {
@@ -95,6 +95,40 @@ func NewDeviceService() *DeviceService { return &DeviceService{} }
 	}
 	if !strings.Contains(string(data), "# tddcheck Architecture Index") {
 		t.Fatalf("expected generated doc, got:\n%s", string(data))
+	}
+}
+
+func TestRunWithArgsDocCheckDetectsDriftWithoutWriting(t *testing.T) {
+	root := cliFixture(t, map[string]string{
+		"internal/service/device.service.go": `package service
+type DeviceService struct{}
+func NewDeviceService() *DeviceService { return &DeviceService{} }
+`,
+	})
+	output := filepath.Join(root, "docs", "index.md")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	args := []string{"doc", "--check", "--root", filepath.Join(root, "internal"), "--output", output}
+	if code := runWithArgs(context.Background(), args, &stdout, &stderr); code != 1 {
+		t.Fatalf("expected missing doc exit 1, got %d, stderr:\n%s", code, stderr.String())
+	}
+	if _, err := os.Stat(output); !os.IsNotExist(err) {
+		t.Fatalf("expected check not to write output, got %v", err)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if code := runWithArgs(context.Background(), []string{"doc", "--root", filepath.Join(root, "internal"), "--output", output}, &stdout, &stderr); code != 0 {
+		t.Fatalf("expected write exit 0, got %d, stderr:\n%s", code, stderr.String())
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if code := runWithArgs(context.Background(), args, &stdout, &stderr); code != 0 {
+		t.Fatalf("expected current doc exit 0, got %d, stderr:\n%s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "documentation is up to date") {
+		t.Fatalf("unexpected stdout:\n%s", stdout.String())
 	}
 }
 
@@ -149,7 +183,7 @@ func TestReadConfigAcceptsNamespaceAndSubjectVocabulary(t *testing.T) {
 	cliWriteFile(t, root, "tddcheck.json", `{
   "layerDirs": ["adapter"],
   "layerFileNameModes": {"adapter": "qualified_kind"},
-  "layerFileKinds": {"adapter": ["free"]},
+  "layerKindPolicies": {"adapter": {"free": "free"}},
   "architectureNamespaces": {"adapter": ["shared"]},
   "escapedSubjectSuffixes": [],
   "forbiddenWeakSubjects": []

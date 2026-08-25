@@ -29,8 +29,7 @@ func handlerIndexesFromFile(context *rulekit.Snapshot, file rulekit.GoFile) []Ha
 				if _, ok := typeSpec.Type.(*ast.StructType); !ok {
 					continue
 				}
-				handler := ensureHandlerIndex(handlers, context, file, typeSpec.Name.Name)
-				handler.Scope = scopeFromTypeName(typeSpec.Name.Name, "Handler")
+				ensureHandlerIndex(handlers, context, file, typeSpec.Name.Name)
 			}
 		case *ast.FuncDecl:
 			if typed.Recv == nil {
@@ -53,8 +52,7 @@ func handlerIndexesFromFile(context *rulekit.Snapshot, file rulekit.GoFile) []Ha
 
 	result := make([]HandlerIndex, 0, len(handlers))
 	if len(handlers) == 0 && len(registerNames) > 0 {
-		handler := ensureHandlerIndex(handlers, context, file, "")
-		handler.Scope = scopeFromFilename(file.Base)
+		ensureHandlerIndex(handlers, context, file, "")
 	}
 	for _, handler := range handlers {
 		handler.Registers = uniqueStrings(registerNames)
@@ -80,9 +78,9 @@ func ensureHandlerIndex(handlers map[string]*HandlerIndex, context *rulekit.Snap
 	handler := handlers[name]
 	if handler == nil {
 		handler = &HandlerIndex{
-			Scope: scopeFromTypeName(name, "Handler"),
-			Type:  name,
-			File:  context.DisplayPath(file.AbsPath),
+			Identity: indexIdentity(file, subjectFromTypeName(name, "Handler")),
+			Type:     name,
+			File:     context.DisplayPath(file.AbsPath),
 		}
 		handlers[name] = handler
 	}
@@ -106,7 +104,6 @@ func serviceIndexesFromFile(context *rulekit.Snapshot, file rulekit.GoFile) []Se
 					continue
 				}
 				service := ensureServiceIndex(services, context, file, typeSpec.Name.Name)
-				service.Scope = scopeFromTypeName(typeSpec.Name.Name, "Service")
 				service.Dependencies = serviceDependencies(typeSpec)
 			}
 		case *ast.FuncDecl:
@@ -132,9 +129,6 @@ func serviceIndexesFromFile(context *rulekit.Snapshot, file rulekit.GoFile) []Se
 
 	result := make([]ServiceIndex, 0, len(services))
 	for _, service := range services {
-		if service.Scope == "" {
-			service.Scope = scopeFromTypeName(service.Type, "Service")
-		}
 		slicesSortMethods(service.Methods)
 		slicesSortStrings(service.Dependencies)
 		result = append(result, *service)
@@ -146,9 +140,9 @@ func ensureServiceIndex(services map[string]*ServiceIndex, context *rulekit.Snap
 	service := services[name]
 	if service == nil {
 		service = &ServiceIndex{
-			Scope: scopeFromTypeName(name, "Service"),
-			Type:  name,
-			File:  context.DisplayPath(file.AbsPath),
+			Identity: indexIdentity(file, subjectFromTypeName(name, "Service")),
+			Type:     name,
+			File:     context.DisplayPath(file.AbsPath),
 		}
 		services[name] = service
 	}
@@ -177,8 +171,8 @@ func serviceDependencies(typeSpec *ast.TypeSpec) []string {
 
 func storeIndexesFromFile(context *rulekit.Snapshot, file rulekit.GoFile) []StoreIndex {
 	store := StoreIndex{
-		Scope: scopeFromFilename(file.Base),
-		File:  context.DisplayPath(file.AbsPath),
+		Identity: file.Identity,
+		File:     context.DisplayPath(file.AbsPath),
 	}
 	for _, decl := range file.AST.Decls {
 		funcDecl, ok := decl.(*ast.FuncDecl)
@@ -216,15 +210,15 @@ func schemaIndexesFromFile(context *rulekit.Snapshot, file rulekit.GoFile) ([]Ta
 				continue
 			}
 			table := TableIndex{
-				Scope:       scopeFromTypeName(typeSpec.Name.Name, "Model"),
+				Identity:    indexIdentity(file, subjectFromTypeName(typeSpec.Name.Name, "Model")),
 				Model:       typeSpec.Name.Name,
 				File:        context.DisplayPath(file.AbsPath),
 				ForeignKeys: foreignKeys[typeSpec.Name.Name],
 			}
 			projection := ProjectionIndex{
-				Scope: scopeFromTypeName(typeSpec.Name.Name, "Model"),
-				Model: typeSpec.Name.Name,
-				File:  context.DisplayPath(file.AbsPath),
+				Identity: indexIdentity(file, subjectFromTypeName(typeSpec.Name.Name, "Model")),
+				Model:    typeSpec.Name.Name,
+				File:     context.DisplayPath(file.AbsPath),
 			}
 			for _, field := range structType.Fields.List {
 				if embeddedBunBaseModel(field) {
@@ -419,8 +413,16 @@ func exprString(fileSet *token.FileSet, expr ast.Expr) string {
 	return buffer.String()
 }
 
-func scopeFromTypeName(name string, suffix string) string {
+func subjectFromTypeName(name string, suffix string) string {
 	return snakeName(strings.TrimSuffix(name, suffix))
+}
+
+func indexIdentity(file rulekit.GoFile, inferredSubject string) FileIdentity {
+	identity := file.Identity
+	if identity.Subject == "" && identity.Namespace == "" {
+		identity.Subject = inferredSubject
+	}
+	return identity
 }
 
 func snakeName(value string) string {
@@ -458,18 +460,6 @@ func exprTypeName(expr ast.Expr) string {
 		return exprTypeName(typed.Elt)
 	}
 	return ""
-}
-
-func scopeFromFilename(base string) string {
-	name := strings.TrimSuffix(base, ".go")
-	parts := strings.Split(name, ".")
-	if len(parts) < 2 {
-		return ""
-	}
-	if len(parts) >= 3 && parts[0] == "x" {
-		return strings.Join(parts[:2], ".")
-	}
-	return parts[0]
 }
 
 func slicesSortMethods(methods []MethodIndex) {

@@ -10,7 +10,7 @@ import (
 
 func storeViolations(file rulekit.GoFile, name fileName) []Violation {
 	var violations []Violation
-	expectedSubjectPrefix := upperCamelName(name.qualifier())
+	expectedSubjectPrefix := upperCamelName(name.Qualifier())
 	for _, decl := range file.AST.Decls {
 		switch typed := decl.(type) {
 		case *ast.GenDecl:
@@ -155,26 +155,20 @@ func storeMethodResultViolation(funcDecl *ast.FuncDecl) string {
 			return "List store methods must return a slice and error"
 		}
 	case "Fetch":
-		if len(values) != 1 || !exprIsPointer(values[0]) {
-			return "Fetch store methods must return a pointer and error"
+		if len(values) != 1 {
+			return "Fetch store methods must return one value and error"
 		}
 	case "Count":
-		if len(values) != 1 || !exprIsIdent(values[0], "int") {
-			return "Count store methods must return int and error"
+		if len(values) != 1 || !integerResult(values[0]) {
+			return "Count store methods must return an integer and error"
 		}
 	case "Exists":
 		if len(values) != 1 || !exprIsIdent(values[0], "bool") {
 			return "Exists store methods must return bool and error"
 		}
 	case "Create", "Update", "Upsert":
-		if len(values) != 1 && len(values) != 2 {
-			return action + " store methods must return a pointer, optional id string, and error"
-		}
-		if !exprIsPointer(values[0]) {
-			return action + " store methods must return a pointer, optional id string, and error"
-		}
-		if len(values) == 2 && !exprIsIdent(values[1], "string") {
-			return action + " store methods must return a pointer, optional id string, and error"
+		if len(values) > 2 {
+			return action + " store methods must return at most two values and error"
 		}
 	case "Delete", "Remove":
 		if len(values) != 0 && (len(values) != 1 || !exprIsIdent(values[0], "bool")) {
@@ -186,4 +180,17 @@ func storeMethodResultViolation(funcDecl *ast.FuncDecl) string {
 		}
 	}
 	return ""
+}
+
+func integerResult(expr ast.Expr) bool {
+	ident, ok := expr.(*ast.Ident)
+	if !ok {
+		return false
+	}
+	switch ident.Name {
+	case "int", "int8", "int16", "int32", "int64", "uint", "uint8", "uint16", "uint32", "uint64":
+		return true
+	default:
+		return false
+	}
 }

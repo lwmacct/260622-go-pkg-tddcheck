@@ -15,7 +15,7 @@ layerdeps   分层 import 依赖约束
 
 ```text
 *_test.go                                      默认不加载；IncludeTests=true 时可供依赖和自定义规则检查
-{subject}.free.go / x.{namespace}.free.go      不限制声明内容；仍参与依赖检查，不参与架构索引
+{subject}.free.go / x.{namespace}.free.go      不限制声明内容；仍参与依赖检查，并进入 free 文件审计清单
 隐藏目录                                       不参与扫描
 vendor/node_modules/dist/build  默认不参与扫描
 ```
@@ -46,6 +46,8 @@ x.{namespace}.{kind}.go
 ```
 
 `subject` 表示业务主题，不限定为 HTTP/REST resource。`x` 是架构文件标识，`namespace` 必须属于所在层的架构 namespace 白名单，`kind` 仍按所在层允许的文件 kind 检查。
+
+`subject` 和 `namespace` 都是独立的 lowercase snake_case 组件，`kind` 是单个 lowercase 字母数字原子。多段 kind（例如 `service.handler.go`）、大写、连字符、连续下划线和 kind 中的下划线均不合法。业务 subject 可以与某个 namespace 同名；是否为架构文件只由 `x.` 标识决定。
 
 示例：
 
@@ -102,6 +104,8 @@ service:    free, support, mapper, commands, provider, service
 repository: free, support, repository, schema, store
 ```
 
+每个允许的 kind 都显式绑定一个声明策略。默认配置中策略 ID 通常与 kind 同名；`free` 策略不限制声明。自定义 kind 如果只需要命名与依赖约束，必须显式映射到 `free`，不存在隐式的未知 kind 放行。
+
 各层允许的架构 namespace：
 
 ```text
@@ -142,7 +146,7 @@ repository:
 *.commands.go     只能声明类型；类型名必须以 Request、Response、Result 或 Item 结尾
 *.provider.go     service 层声明 {Subject}Provider、New* 构造和 provider receiver 方法
 *.schema.go       repository 层声明 {Subject}*Model struct、schema 生命周期函数和 *Model receiver hook
-*.free.go         可以声明任意内容；可用于任意合法 subject 或当前层允许的 namespace
+*.free.go         可以声明任意内容；可用于任意合法 subject 或当前层允许的 namespace；会进入分析审计清单
 ```
 
 额外约束：
@@ -170,7 +174,7 @@ support 函数必须以 util、validate、normalize、Wrap、Is 或 As 开头
 
 业务 subject 会从声明名中推断 snake_case。例如 `DeviceGroupService` 对应 `device_group.service.go`。
 
-service 层同一业务 subject 如果声明了 `commands`、`provider` 或 `support` 等文件，默认也必须声明对应的 `{subject}.service.go` 和 `New{Subject}Service`。架构 namespace 和 `free` kind 不受这个要求影响。
+默认将 service 层的 `service` kind 配置为 subject 锚点：同一业务 subject 如果声明了 `commands`、`provider` 或 `support` 等文件，也必须声明对应的 `{subject}.service.go`。该文件的声明策略会继续要求 `New{Subject}Service`。架构 namespace 和 `free` kind 不受锚点约束。自定义 qualified-kind 层可配置自己的锚点；package-kind 层没有文件级 subject，不能配置锚点。
 
 ## 分层依赖
 
@@ -190,13 +194,13 @@ example.com/app/internal/service
 example.com/app/internal/repository/device
 ```
 
-所有 `free` 文件只免除 filelayout 的声明内容约束，仍参与分层依赖检查。
+所有 `free` 文件只免除 filelayout 的声明内容约束，仍参与分层依赖检查，并通过 `Analysis.FreeFiles`、JSON 和生成的 Markdown 文档公开审计。
 
 ## 架构索引
 
 架构索引是只读分析结果，不参与架构规则是否通过的判定。它复用同一次静态扫描，不连接数据库，也不执行业务代码。
 
-当前索引识别：
+当前索引按已解析的 `FileIdentity.Kind` 识别，因此 qualified-kind 和 package-kind 两种布局使用同一条提取路径：
 
 ```text
 handler      *.handler.go 中的 *Handler、Register* 和 receiver 方法
@@ -206,6 +210,30 @@ repository   *.schema.go 中的 *Model、bun table tag、字段 tag 和 ForeignK
 ```
 
 架构索引不识别或表达 API endpoint。API 契约应由项目使用的 API 框架或 OpenAPI 工具生成。
+
+JSON 分析 schema 当前为 v2。handler、service、store、table 和 projection 不再输出含义混杂的 `scope` 字符串，而是统一输出：
+
+```json
+{
+  "identity": {
+    "layer": "service",
+    "subject": "device",
+    "kind": "service"
+  }
+}
+```
+
+架构文件使用独立的 `namespace` 字段，例如 `x.shared.handler.go` 输出 `"namespace": "shared"`。free 文件不进入架构实体索引，但会进入独立审计清单。
+
+## 诊断契约
+
+每条结构化诊断包含稳定的 `ruleId` 和细分 `code`，例如 `filelayout/invalid-filename`、`filelayout/missing-subject-anchor`、`filelayout/namespace-not-allowed` 和 `layerdeps/forbidden-import`。可机械迁移的问题可包含 `suggestedFix`；旧式 `x_http.*.go` 命名会提供结构化 rename fix。
+
+生成文档后可在 CI 中检查漂移，检查模式不会写文件：
+
+```bash
+tddcheck doc --check --root internal --output docs/tddcheck.index.gen.md
+```
 
 ## 自定义配置
 
@@ -217,7 +245,8 @@ DependencyLayerDirs     参与 layerdeps 检查的层目录名；nil 时等于 L
 SkipDirs                扫描时跳过的目录名
 LayerRules              禁止的 import 依赖规则
 LayerFileNameModes      每层文件命名模式：qualified_kind 或 package_kind
-LayerFileKinds          每层允许的文件 kind
+LayerKindPolicies       每层允许的文件 kind 及其显式声明策略 ID
+LayerSubjectAnchorKinds qualified-kind 层要求每个业务 subject 必须存在的锚点 kind
 ArchitectureNamespaces  每层允许的架构 namespace；配置值不包含 x. 标识
 EscapedSubjectSuffixes  禁止编码进业务 subject 的文件 kind 或动作词
 ForbiddenWeakSubjects   禁止使用的弱业务 subject
@@ -234,9 +263,13 @@ config := tddcheck.Config{
 	LayerFileNameModes: map[string]string{
 		"adapter": tddcheck.FileNameModePackageKind,
 	},
-	LayerFileKinds: map[string][]string{
-		"adapter": {"endpoint", "service"},
+	LayerKindPolicies: map[string]map[string]string{
+		"adapter": {
+			"doc":     "free",
+			"service": "free",
+		},
 	},
+	LayerSubjectAnchorKinds: map[string]string{},
 	ArchitectureNamespaces: map[string][]string{},
 	LayerRules: []tddcheck.LayerDependencyRule{
 		{

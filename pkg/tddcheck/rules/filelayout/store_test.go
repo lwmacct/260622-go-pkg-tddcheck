@@ -45,8 +45,6 @@ func (s *Store) listDevicesMissingError(ctx context.Context) []string { return n
 	assertViolationContains(t, violations, "store methods must accept context.Context as the first parameter")
 	assertViolationContains(t, violations, "store methods must return error as the last result")
 	assertViolationContains(t, violations, "List store methods must return a slice and error")
-	assertViolationContains(t, violations, "Fetch store methods must return a pointer and error")
-	assertViolationContains(t, violations, "Create store methods must return a pointer, optional id string, and error")
 	assertViolationContains(t, violations, "Delete store methods must return optional bool and error")
 	assertViolationContains(t, violations, "Add store methods must only return error")
 }
@@ -57,12 +55,12 @@ func TestViolationsAllowsStoreActionSubjectNames(t *testing.T) {
 import "context"
 func (s *Store) ListDevices(ctx context.Context) ([]string, error) { return nil, nil }
 func (s *Store) ListDevicesByEnabled(ctx context.Context) ([]string, error) { return nil, nil }
-func (s *Store) FetchDeviceByID(ctx context.Context) (*string, error) { return nil, nil }
-func (s *Store) CountDevices(ctx context.Context) (int, error) { return 0, nil }
+func (s *Store) FetchDeviceByID(ctx context.Context) (string, error) { return "", nil }
+func (s *Store) CountDevices(ctx context.Context) (int64, error) { return 0, nil }
 func (s *Store) ExistsDeviceByID(ctx context.Context) (bool, error) { return false, nil }
-func (s *Store) CreateDevice(ctx context.Context) (*string, string, error) { return nil, "", nil }
-func (s *Store) UpdateDevice(ctx context.Context) (*string, error) { return nil, nil }
-func (s *Store) UpsertDevice(ctx context.Context) (*string, string, error) { return nil, "", nil }
+func (s *Store) CreateDevice(ctx context.Context) (string, error) { return "", nil }
+func (s *Store) UpdateDevice(ctx context.Context) (bool, error) { return false, nil }
+func (s *Store) UpsertDevice(ctx context.Context) (string, string, error) { return "", "", nil }
 func (s *Store) DeleteDeviceByID(ctx context.Context) (bool, error) { return false, nil }
 func (s *Store) RemoveDevice(ctx context.Context) error { return nil }
 func (s *Store) AddDevice(ctx context.Context) error { return nil }

@@ -5,15 +5,8 @@ import (
 	"go/token"
 )
 
-func repositoryViolations(fileSet *token.FileSet, filename string, name fileName, parsedFile *ast.File) []Violation {
+func repositoryViolations(fileSet *token.FileSet, filename string, _ fileName, parsedFile *ast.File) []Violation {
 	var violations []Violation
-	if name.namespace != "store" {
-		violations = append(violations, Violation{
-			File:    displayFilename(filename),
-			Line:    1,
-			Message: "repository files must use x.store namespace",
-		})
-	}
 	hasStore := false
 	hasNewStore := false
 

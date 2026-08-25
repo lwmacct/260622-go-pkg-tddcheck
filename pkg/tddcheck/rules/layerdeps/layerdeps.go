@@ -37,6 +37,7 @@ func checkFile(_ context.Context, snapshot *rulekit.Snapshot, file rulekit.GoFil
 		position := rulekit.Position{File: value.File, Line: value.Line, Column: value.Column}
 		diagnostics = append(diagnostics, rulekit.NewDiagnostic(
 			RuleID,
+			RuleID+"/forbidden-import",
 			rulekit.SeverityError,
 			value.Message+": "+value.ImportPath,
 			position,

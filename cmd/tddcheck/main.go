@@ -105,6 +105,7 @@ func runDoc(ctx context.Context, args []string, stdout io.Writer, stderr io.Writ
 	flags := newFlagSet("doc", stderr)
 	options := newAnalysisFlags(flags)
 	output := flags.String("output", tddcheck.DefaultDocFile, "markdown output file")
+	check := flags.Bool("check", false, "verify that markdown output is up to date")
 	if code := parseFlags(flags, args, stderr); code != 0 {
 		return code
 	}
@@ -112,6 +113,17 @@ func runDoc(ctx context.Context, args []string, stdout io.Writer, stderr io.Writ
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, "tddcheck: "+err.Error())
 		return 2
+	}
+	if *check {
+		if err := analysis.CheckMarkdown(*output); err != nil {
+			_, _ = fmt.Fprintln(stderr, "tddcheck: "+err.Error())
+			if errors.Is(err, tddcheck.ErrMarkdownOutOfDate) {
+				return 1
+			}
+			return 2
+		}
+		_, _ = fmt.Fprintln(stdout, "tddcheck: documentation is up to date")
+		return 0
 	}
 	if err := analysis.WriteMarkdown(*output); err != nil {
 		_, _ = fmt.Fprintln(stderr, "tddcheck: "+err.Error())

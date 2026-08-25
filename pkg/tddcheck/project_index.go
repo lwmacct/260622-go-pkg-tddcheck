@@ -23,7 +23,7 @@ type Index struct {
 
 // HandlerIndex describes a handler type, its registrations, and methods.
 type HandlerIndex struct {
-	Scope     string        `json:"scope"`
+	Identity  FileIdentity  `json:"identity"`
 	Type      string        `json:"type,omitempty"`
 	Registers []string      `json:"registers,omitempty"`
 	File      string        `json:"file"`
@@ -33,7 +33,7 @@ type HandlerIndex struct {
 // ServiceIndex describes a service type, constructor, methods, and declared
 // dependencies.
 type ServiceIndex struct {
-	Scope        string        `json:"scope"`
+	Identity     FileIdentity  `json:"identity"`
 	Type         string        `json:"type"`
 	Constructor  string        `json:"constructor,omitempty"`
 	File         string        `json:"file"`
@@ -43,9 +43,9 @@ type ServiceIndex struct {
 
 // StoreIndex describes the methods associated with a repository store scope.
 type StoreIndex struct {
-	Scope   string        `json:"scope"`
-	File    string        `json:"file"`
-	Methods []MethodIndex `json:"methods,omitempty"`
+	Identity FileIdentity  `json:"identity"`
+	File     string        `json:"file"`
+	Methods  []MethodIndex `json:"methods,omitempty"`
 }
 
 // MethodIndex identifies a discovered method and its source line.
@@ -56,7 +56,7 @@ type MethodIndex struct {
 
 // TableIndex describes a database table model discovered from a schema file.
 type TableIndex struct {
-	Scope       string       `json:"scope"`
+	Identity    FileIdentity `json:"identity"`
 	Model       string       `json:"model"`
 	Table       string       `json:"table"`
 	Alias       string       `json:"alias,omitempty"`
@@ -67,11 +67,11 @@ type TableIndex struct {
 
 // ProjectionIndex describes a schema projection and the models it extends.
 type ProjectionIndex struct {
-	Scope   string       `json:"scope"`
-	Model   string       `json:"model"`
-	File    string       `json:"file"`
-	Extends []string     `json:"extends,omitempty"`
-	Fields  []FieldIndex `json:"fields,omitempty"`
+	Identity FileIdentity `json:"identity"`
+	Model    string       `json:"model"`
+	File     string       `json:"file"`
+	Extends  []string     `json:"extends,omitempty"`
+	Fields   []FieldIndex `json:"fields,omitempty"`
 }
 
 // FieldIndex describes a Go model field and its database column attributes.
@@ -106,7 +106,7 @@ func writeHandlerText(builder *strings.Builder, handlers []HandlerIndex) {
 		return
 	}
 	for _, handler := range handlers {
-		_, _ = fmt.Fprintf(builder, "- %s (%s) %s\n", handler.Type, handler.Scope, handler.File)
+		_, _ = fmt.Fprintf(builder, "- %s (%s) %s\n", handler.Type, identityLabel(handler.Identity), handler.File)
 		if len(handler.Registers) > 0 {
 			_, _ = fmt.Fprintf(builder, "  registers: %s\n", strings.Join(handler.Registers, ", "))
 		}
@@ -121,7 +121,7 @@ func writeProjectionText(builder *strings.Builder, projections []ProjectionIndex
 		return
 	}
 	for _, projection := range projections {
-		_, _ = fmt.Fprintf(builder, "- %s (%s) %s\n", projection.Model, projection.Scope, projection.File)
+		_, _ = fmt.Fprintf(builder, "- %s (%s) %s\n", projection.Model, identityLabel(projection.Identity), projection.File)
 		if len(projection.Extends) > 0 {
 			_, _ = fmt.Fprintf(builder, "  extends: %s\n", strings.Join(projection.Extends, ", "))
 		}
@@ -142,7 +142,7 @@ func writeServiceText(builder *strings.Builder, services []ServiceIndex) {
 		return
 	}
 	for _, service := range services {
-		_, _ = fmt.Fprintf(builder, "- %s (%s) %s\n", service.Type, service.Scope, service.File)
+		_, _ = fmt.Fprintf(builder, "- %s (%s) %s\n", service.Type, identityLabel(service.Identity), service.File)
 		if service.Constructor != "" {
 			_, _ = fmt.Fprintf(builder, "  constructor: %s\n", service.Constructor)
 		}
@@ -160,7 +160,7 @@ func writeStoreText(builder *strings.Builder, stores []StoreIndex) {
 		return
 	}
 	for _, store := range stores {
-		_, _ = fmt.Fprintf(builder, "- %s %s\n", store.Scope, store.File)
+		_, _ = fmt.Fprintf(builder, "- %s %s\n", identityLabel(store.Identity), store.File)
 		writeMethodNames(builder, "  methods", store.Methods)
 	}
 }
@@ -176,7 +176,7 @@ func writeTableText(builder *strings.Builder, tables []TableIndex) {
 		if name == "" {
 			name = "(unknown)"
 		}
-		_, _ = fmt.Fprintf(builder, "- %s (%s, %s) %s\n", name, table.Model, table.Scope, table.File)
+		_, _ = fmt.Fprintf(builder, "- %s (%s, %s) %s\n", name, table.Model, identityLabel(table.Identity), table.File)
 		if table.Alias != "" {
 			_, _ = fmt.Fprintf(builder, "  alias: %s\n", table.Alias)
 		}
@@ -238,23 +238,23 @@ func indexFromSnapshot(snapshot *rulekit.Snapshot) Index {
 		projectRoot: snapshot.ProjectRoot,
 	}
 	for _, file := range snapshot.Files {
-		if file.IsTest {
+		if file.IsTest || !file.IdentityOK {
 			continue
 		}
 		switch file.Layer {
 		case "handler":
-			if strings.HasSuffix(file.Base, ".handler.go") {
+			if file.Identity.Kind == "handler" {
 				result.Handlers = append(result.Handlers, handlerIndexesFromFile(snapshot, file)...)
 			}
 		case "service":
-			if strings.HasSuffix(file.Base, ".service.go") {
+			if file.Identity.Kind == "service" {
 				result.Services = append(result.Services, serviceIndexesFromFile(snapshot, file)...)
 			}
 		case "repository":
-			if strings.HasSuffix(file.Base, ".store.go") {
+			if file.Identity.Kind == "store" {
 				result.Stores = append(result.Stores, storeIndexesFromFile(snapshot, file)...)
 			}
-			if strings.HasSuffix(file.Base, ".schema.go") {
+			if file.Identity.Kind == "schema" {
 				tables, projections := schemaIndexesFromFile(snapshot, file)
 				result.Tables = append(result.Tables, tables...)
 				result.Projections = append(result.Projections, projections...)
@@ -267,21 +267,36 @@ func indexFromSnapshot(snapshot *rulekit.Snapshot) Index {
 
 func sortIndex(index Index) {
 	slices.SortFunc(index.Handlers, func(a, b HandlerIndex) int {
-		return strings.Compare(a.Scope, b.Scope)
+		return strings.Compare(identitySortKey(a.Identity)+"\x00"+a.Type+"\x00"+a.File, identitySortKey(b.Identity)+"\x00"+b.Type+"\x00"+b.File)
 	})
 	slices.SortFunc(index.Services, func(a, b ServiceIndex) int {
-		return strings.Compare(a.Type, b.Type)
+		return strings.Compare(identitySortKey(a.Identity)+"\x00"+a.Type+"\x00"+a.File, identitySortKey(b.Identity)+"\x00"+b.Type+"\x00"+b.File)
 	})
 	slices.SortFunc(index.Stores, func(a, b StoreIndex) int {
-		return strings.Compare(a.Scope, b.Scope)
+		return strings.Compare(identitySortKey(a.Identity)+"\x00"+a.File, identitySortKey(b.Identity)+"\x00"+b.File)
 	})
 	slices.SortFunc(index.Tables, func(a, b TableIndex) int {
-		if a.Table != b.Table {
-			return strings.Compare(a.Table, b.Table)
-		}
-		return strings.Compare(a.Model, b.Model)
+		keyA := a.Table + "\x00" + a.Model + "\x00" + identitySortKey(a.Identity) + "\x00" + a.File
+		keyB := b.Table + "\x00" + b.Model + "\x00" + identitySortKey(b.Identity) + "\x00" + b.File
+		return strings.Compare(keyA, keyB)
 	})
 	slices.SortFunc(index.Projections, func(a, b ProjectionIndex) int {
-		return strings.Compare(a.Model, b.Model)
+		keyA := a.Model + "\x00" + identitySortKey(a.Identity) + "\x00" + a.File
+		keyB := b.Model + "\x00" + identitySortKey(b.Identity) + "\x00" + b.File
+		return strings.Compare(keyA, keyB)
 	})
+}
+
+func identityLabel(identity FileIdentity) string {
+	if identity.Namespace != "" {
+		return "x." + identity.Namespace
+	}
+	if identity.Subject != "" {
+		return identity.Subject
+	}
+	return identity.Kind
+}
+
+func identitySortKey(identity FileIdentity) string {
+	return identity.Layer + "\x00" + identity.Subject + "\x00" + identity.Namespace + "\x00" + identity.Kind
 }

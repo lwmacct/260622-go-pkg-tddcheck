@@ -29,8 +29,12 @@ type Config struct {
 
 	// LayerFileNameModes maps a layer to a FileNameMode constant.
 	LayerFileNameModes map[string]string `json:"layerFileNameModes,omitempty"`
-	// LayerFileKinds maps a layer to its allowed filename kinds.
-	LayerFileKinds map[string][]string `json:"layerFileKinds,omitempty"`
+	// LayerKindPolicies maps each allowed filename kind to an explicit
+	// declaration policy ID within its layer.
+	LayerKindPolicies map[string]map[string]string `json:"layerKindPolicies,omitempty"`
+	// LayerSubjectAnchorKinds requires every business subject in a qualified-kind
+	// layer to declare the configured anchor kind.
+	LayerSubjectAnchorKinds map[string]string `json:"layerSubjectAnchorKinds,omitempty"`
 	// ArchitectureNamespaces maps a layer to its allowed architecture namespaces.
 	ArchitectureNamespaces map[string][]string `json:"architectureNamespaces,omitempty"`
 	// EscapedSubjectSuffixes lists kinds and actions that business subjects must not
@@ -50,15 +54,15 @@ type Profile struct {
 
 	layersByName             map[string]LayerProfile
 	dependencyLayerSet       map[string]bool
-	allowedKindSet           map[string]map[string]bool
+	kindPolicyByLayer        map[string]map[string]string
 	architectureNamespaceSet map[string]map[string]bool
-	reservedNamespaceNameSet map[string]bool
 }
 
 type LayerProfile struct {
 	Name                   string
 	FileNameMode           string
-	FileKinds              []string
+	KindPolicies           map[string]string
+	SubjectAnchorKind      string
 	ArchitectureNamespaces []string
 }
 
@@ -106,10 +110,23 @@ func DefaultConfig() Config {
 			"repository": FileNameModeQualifiedKind,
 		},
 		// Keep shared/cross-layer entries before layer-specific entries.
-		LayerFileKinds: map[string][]string{
-			"handler":    {"free", "support", "mapper", "context", "dto", "endpoint", "handler", "middleware", "utils"},
-			"service":    {"free", "support", "mapper", "commands", "provider", "service"},
-			"repository": {"free", "support", "repository", "schema", "store"},
+		LayerKindPolicies: map[string]map[string]string{
+			"handler": {
+				"free": "free", "support": "support", "mapper": "mapper",
+				"context": "context", "dto": "dto", "endpoint": "endpoint",
+				"handler": "handler", "middleware": "middleware", "utils": "utils",
+			},
+			"service": {
+				"free": "free", "support": "support", "mapper": "mapper",
+				"commands": "commands", "provider": "provider", "service": "service",
+			},
+			"repository": {
+				"free": "free", "support": "support", "repository": "repository",
+				"schema": "schema", "store": "store",
+			},
+		},
+		LayerSubjectAnchorKinds: map[string]string{
+			"service": "service",
 		},
 		ArchitectureNamespaces: map[string][]string{
 			"handler":    {"shared", "http"},
@@ -160,8 +177,11 @@ func (c Config) WithDefaults() Config {
 	if c.LayerFileNameModes == nil {
 		c.LayerFileNameModes = defaults.LayerFileNameModes
 	}
-	if c.LayerFileKinds == nil {
-		c.LayerFileKinds = defaults.LayerFileKinds
+	if c.LayerKindPolicies == nil {
+		c.LayerKindPolicies = defaults.LayerKindPolicies
+	}
+	if c.LayerSubjectAnchorKinds == nil {
+		c.LayerSubjectAnchorKinds = defaults.LayerSubjectAnchorKinds
 	}
 	if c.ArchitectureNamespaces == nil {
 		c.ArchitectureNamespaces = defaults.ArchitectureNamespaces
@@ -179,11 +199,18 @@ func (c Config) WithDefaults() Config {
 // caller-owned collections so an analysis cannot observe later mutations.
 func (c Config) Compile() (Config, error) {
 	inheritedLayerRules := c.LayerRules == nil
+	inheritedSubjectAnchors := c.LayerSubjectAnchorKinds == nil
 	c = c.WithDefaults()
 	if inheritedLayerRules {
 		layers := sliceSet(c.DependencyLayerDirs)
 		c.LayerRules = slices.DeleteFunc(c.LayerRules, func(rule LayerDependencyRule) bool {
 			return !layers[rule.SourceLayer] || !layers[rule.TargetLayer]
+		})
+	}
+	if inheritedSubjectAnchors {
+		layers := sliceSet(c.LayerDirs)
+		maps.DeleteFunc(c.LayerSubjectAnchorKinds, func(layer string, _ string) bool {
+			return !layers[layer]
 		})
 	}
 	if err := c.Validate(); err != nil {
@@ -199,7 +226,8 @@ func (c Config) Compile() (Config, error) {
 		c.LayerRules[index].ExceptTargetRelPrefixes = slices.Clone(c.LayerRules[index].ExceptTargetRelPrefixes)
 	}
 	c.LayerFileNameModes = maps.Clone(c.LayerFileNameModes)
-	c.LayerFileKinds = cloneStringSlices(c.LayerFileKinds)
+	c.LayerKindPolicies = cloneStringMaps(c.LayerKindPolicies)
+	c.LayerSubjectAnchorKinds = maps.Clone(c.LayerSubjectAnchorKinds)
 	c.ArchitectureNamespaces = cloneStringSlices(c.ArchitectureNamespaces)
 	c.EscapedSubjectSuffixes = slices.Clone(c.EscapedSubjectSuffixes)
 	c.ForbiddenWeakSubjects = slices.Clone(c.ForbiddenWeakSubjects)
@@ -243,8 +271,8 @@ func (c Config) ValidateFileLayout() error {
 		if mode != FileNameModeQualifiedKind && mode != FileNameModePackageKind {
 			return fmt.Errorf("layer %q has invalid filename mode %q", layer, mode)
 		}
-		if len(c.LayerFileKinds[layer]) == 0 {
-			return fmt.Errorf("layer %q has no allowed file kinds", layer)
+		if len(c.LayerKindPolicies[layer]) == 0 {
+			return fmt.Errorf("layer %q has no kind policies", layer)
 		}
 	}
 	for layer := range c.LayerFileNameModes {
@@ -252,9 +280,31 @@ func (c Config) ValidateFileLayout() error {
 			return fmt.Errorf("filename mode references unknown layer %q", layer)
 		}
 	}
-	for layer := range c.LayerFileKinds {
+	for layer, policies := range c.LayerKindPolicies {
 		if !layers[layer] {
-			return fmt.Errorf("file kinds reference unknown layer %q", layer)
+			return fmt.Errorf("kind policies reference unknown layer %q", layer)
+		}
+		for kind, policy := range policies {
+			if !validFileAtom(kind) {
+				return fmt.Errorf("layer %q has invalid file kind %q", layer, kind)
+			}
+			if policy == "" {
+				return fmt.Errorf("layer %q file kind %q has an empty policy", layer, kind)
+			}
+		}
+	}
+	for layer, anchorKind := range c.LayerSubjectAnchorKinds {
+		if !layers[layer] {
+			return fmt.Errorf("subject anchor references unknown layer %q", layer)
+		}
+		if c.LayerFileNameModes[layer] != FileNameModeQualifiedKind {
+			return fmt.Errorf("layer %q cannot define subject anchor %q in package-kind mode", layer, anchorKind)
+		}
+		if anchorKind == "free" {
+			return fmt.Errorf("layer %q cannot use free as its subject anchor", layer)
+		}
+		if _, ok := c.LayerKindPolicies[layer][anchorKind]; !ok {
+			return fmt.Errorf("layer %q subject anchor %q is not an allowed kind", layer, anchorKind)
 		}
 	}
 	for layer := range c.ArchitectureNamespaces {
@@ -313,13 +363,20 @@ func cloneStringSlices(values map[string][]string) map[string][]string {
 	return result
 }
 
+func cloneStringMaps(values map[string]map[string]string) map[string]map[string]string {
+	result := make(map[string]map[string]string, len(values))
+	for key, value := range values {
+		result[key] = maps.Clone(value)
+	}
+	return result
+}
+
 func (c Config) Profile() Profile {
 	c = c.WithDefaults()
 	layers := make([]LayerProfile, 0, len(c.LayerDirs))
 	layersByName := make(map[string]LayerProfile, len(c.LayerDirs))
-	allowedKinds := make(map[string]map[string]bool, len(c.LayerDirs))
+	kindPolicies := make(map[string]map[string]string, len(c.LayerDirs))
 	architectureNamespaces := make(map[string]map[string]bool, len(c.LayerDirs))
-	reservedNamespaces := map[string]bool{}
 	for _, layer := range c.LayerDirs {
 		mode := c.LayerFileNameModes[layer]
 		if mode == "" {
@@ -328,16 +385,14 @@ func (c Config) Profile() Profile {
 		layerProfile := LayerProfile{
 			Name:                   layer,
 			FileNameMode:           mode,
-			FileKinds:              c.LayerFileKinds[layer],
+			KindPolicies:           c.LayerKindPolicies[layer],
+			SubjectAnchorKind:      c.LayerSubjectAnchorKinds[layer],
 			ArchitectureNamespaces: c.ArchitectureNamespaces[layer],
 		}
 		layers = append(layers, layerProfile)
 		layersByName[layer] = layerProfile
-		allowedKinds[layer] = sliceSet(layerProfile.FileKinds)
+		kindPolicies[layer] = maps.Clone(layerProfile.KindPolicies)
 		architectureNamespaces[layer] = sliceSet(layerProfile.ArchitectureNamespaces)
-		for _, namespace := range layerProfile.ArchitectureNamespaces {
-			reservedNamespaces[namespace] = true
-		}
 	}
 	return Profile{
 		Layers:                   layers,
@@ -348,9 +403,8 @@ func (c Config) Profile() Profile {
 		ForbiddenWeakSubjects:    c.ForbiddenWeakSubjects,
 		layersByName:             layersByName,
 		dependencyLayerSet:       sliceSet(c.DependencyLayerDirs),
-		allowedKindSet:           allowedKinds,
+		kindPolicyByLayer:        kindPolicies,
 		architectureNamespaceSet: architectureNamespaces,
-		reservedNamespaceNameSet: reservedNamespaces,
 	}
 }
 
@@ -372,15 +426,17 @@ func (p Profile) DependencyLayer(name string) bool {
 }
 
 func (p Profile) KindAllowed(layerName string, kind string) bool {
-	return p.allowedKindSet[layerName][kind]
+	_, ok := p.kindPolicyByLayer[layerName][kind]
+	return ok
+}
+
+func (p Profile) KindPolicy(layerName string, kind string) (string, bool) {
+	policy, ok := p.kindPolicyByLayer[layerName][kind]
+	return policy, ok
 }
 
 func (p Profile) ArchitectureNamespaceAllowed(layerName string, namespace string) bool {
 	return p.architectureNamespaceSet[layerName][namespace]
-}
-
-func (p Profile) ArchitectureNamespaceReserved(namespace string) bool {
-	return p.reservedNamespaceNameSet[namespace]
 }
 
 func StringIn(value string, values []string) bool {

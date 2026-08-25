@@ -24,8 +24,7 @@ func (r Repository) List() {}
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertViolationContains(t, violations, "repository files must use x.store namespace")
-	assertViolationContains(t, violations, "repository files must declare Store struct")
+	assertViolationContains(t, violations, `file kind "repository" requires architecture namespace "store"`)
 	assertViolationContains(t, violations, "repository files must declare NewStore")
 	assertViolationContains(t, violations, "repository files must only declare Store")
 	assertViolationContains(t, violations, "repository receiver methods must use Store")

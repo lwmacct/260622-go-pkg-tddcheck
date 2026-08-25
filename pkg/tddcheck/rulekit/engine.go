@@ -27,11 +27,26 @@ type Range struct {
 	End   Position `json:"end"`
 }
 
+// RenameFix describes an exact file rename.
+type RenameFix struct {
+	From string `json:"from"`
+	To   string `json:"to"`
+}
+
+// SuggestedFix describes a machine-readable correction for a diagnostic.
+type SuggestedFix struct {
+	Message string     `json:"message"`
+	Rename  *RenameFix `json:"rename,omitempty"`
+}
+
+// Diagnostic is one stable, source-located rule result.
 type Diagnostic struct {
-	RuleID   string   `json:"ruleId"`
-	Severity Severity `json:"severity"`
-	Message  string   `json:"message"`
-	Range    Range    `json:"range"`
+	RuleID       string        `json:"ruleId"`
+	Code         string        `json:"code"`
+	Severity     Severity      `json:"severity"`
+	Message      string        `json:"message"`
+	Range        Range         `json:"range"`
+	SuggestedFix *SuggestedFix `json:"suggestedFix,omitempty"`
 }
 
 func (d Diagnostic) String() string {
@@ -45,10 +60,15 @@ func (d Diagnostic) String() string {
 	if location == "" {
 		location = "-"
 	}
-	return fmt.Sprintf("%s [%s] %s", location, d.RuleID, d.Message)
+	label := d.Code
+	if label == "" {
+		label = d.RuleID
+	}
+	return fmt.Sprintf("%s [%s] %s", location, label, d.Message)
 }
 
-func NewDiagnostic(ruleID string, severity Severity, message string, start Position, end Position) Diagnostic {
+// NewDiagnostic constructs a normalized source diagnostic.
+func NewDiagnostic(ruleID string, code string, severity Severity, message string, start Position, end Position) Diagnostic {
 	if severity == "" {
 		severity = SeverityError
 	}
@@ -57,6 +77,7 @@ func NewDiagnostic(ruleID string, severity Severity, message string, start Posit
 	}
 	return Diagnostic{
 		RuleID:   ruleID,
+		Code:     code,
 		Severity: severity,
 		Message:  message,
 		Range:    Range{Start: start, End: end},
@@ -104,6 +125,9 @@ func (e *Engine) Register[T any](id string, scope Scope[T], check CheckFunc[T]) 
 					if values[index].RuleID == "" {
 						values[index].RuleID = id
 					}
+					if values[index].Code == "" {
+						values[index].Code = values[index].RuleID
+					}
 					if values[index].Severity == "" {
 						values[index].Severity = SeverityError
 					}
@@ -146,7 +170,7 @@ func PackageScope(snapshot *Snapshot) iter.Seq[GoPackage] {
 }
 
 func compareDiagnostics(a Diagnostic, b Diagnostic) int {
-	valuesA := []string{a.Range.Start.File, fmt.Sprintf("%09d", a.Range.Start.Line), fmt.Sprintf("%09d", a.Range.Start.Column), a.RuleID, string(a.Severity), a.Message}
-	valuesB := []string{b.Range.Start.File, fmt.Sprintf("%09d", b.Range.Start.Line), fmt.Sprintf("%09d", b.Range.Start.Column), b.RuleID, string(b.Severity), b.Message}
+	valuesA := []string{a.Range.Start.File, fmt.Sprintf("%09d", a.Range.Start.Line), fmt.Sprintf("%09d", a.Range.Start.Column), a.RuleID, a.Code, string(a.Severity), a.Message}
+	valuesB := []string{b.Range.Start.File, fmt.Sprintf("%09d", b.Range.Start.Line), fmt.Sprintf("%09d", b.Range.Start.Column), b.RuleID, b.Code, string(b.Severity), b.Message}
 	return strings.Compare(strings.Join(valuesA, "\x00"), strings.Join(valuesB, "\x00"))
 }

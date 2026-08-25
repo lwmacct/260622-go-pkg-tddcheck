@@ -1,10 +1,14 @@
 package tddcheck
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -15,8 +19,11 @@ import (
 
 const (
 	DefaultDocFile        = "docs/tddcheck.index.gen.md"
-	AnalysisSchemaVersion = "1"
+	AnalysisSchemaVersion = "2"
 )
+
+// ErrMarkdownOutOfDate identifies missing or stale generated documentation.
+var ErrMarkdownOutOfDate = errors.New("generated markdown is out of date")
 
 type Options struct {
 	// Root is an absolute path or a path relative to the current Go module.
@@ -42,6 +49,9 @@ func New(options Options, registrars ...func(*Engine)) (*Analyzer, error) {
 	if err := config.ValidateFileLayout(); err != nil {
 		return nil, err
 	}
+	if err := filelayout.ValidateProfile(config.Profile()); err != nil {
+		return nil, err
+	}
 	var engine rulekit.Engine
 	filelayout.Register(&engine)
 	layerdeps.Register(&engine)
@@ -59,11 +69,18 @@ type Analysis struct {
 	Root          string               `json:"root"`
 	ModulePath    string               `json:"modulePath"`
 	Index         Index                `json:"index"`
+	FreeFiles     []FreeFile           `json:"freeFiles,omitempty"`
 	Diagnostics   []rulekit.Diagnostic `json:"diagnostics,omitempty"`
 	LoadErrors    []LoadError          `json:"packageErrors,omitempty"`
 
 	Duration    time.Duration `json:"-"`
 	projectRoot string
+}
+
+// FreeFile identifies a source file whose declaration policy is unrestricted.
+type FreeFile struct {
+	Identity FileIdentity `json:"identity"`
+	File     string       `json:"file"`
 }
 
 func (a *Analyzer) Analyze(ctx context.Context) (Analysis, error) {
@@ -85,6 +102,7 @@ func (a *Analyzer) Analyze(ctx context.Context) (Analysis, error) {
 		Root:          index.Root,
 		ModulePath:    index.ModulePath,
 		Index:         index,
+		FreeFiles:     freeFilesFromSnapshot(snapshot),
 		Diagnostics:   diagnostics,
 		LoadErrors:    snapshot.LoadErrors,
 		Duration:      time.Since(start),
@@ -104,19 +122,64 @@ func Assert(tb testing.TB, analyzer *Analyzer) {
 	}
 }
 
+// WriteMarkdown writes the current generated architecture documentation.
 func (a Analysis) WriteMarkdown(outputFile string) error {
-	if outputFile == "" {
-		outputFile = DefaultDocFile
-	}
-	outputPath := outputFile
-	if !filepath.IsAbs(outputPath) {
-		if a.projectRoot == "" {
-			return fmt.Errorf("relative output requires an analysis produced by Analyzer.Analyze")
-		}
-		outputPath = filepath.Join(a.projectRoot, filepath.FromSlash(outputFile))
+	outputPath, err := a.markdownPath(outputFile)
+	if err != nil {
+		return err
 	}
 	if err := os.MkdirAll(filepath.Dir(outputPath), 0o750); err != nil {
 		return err
 	}
 	return os.WriteFile(outputPath, []byte(a.Markdown()), 0o644)
+}
+
+// CheckMarkdown reports whether outputFile exactly matches the current
+// generated architecture documentation without modifying it.
+func (a Analysis) CheckMarkdown(outputFile string) error {
+	outputPath, err := a.markdownPath(outputFile)
+	if err != nil {
+		return err
+	}
+	actual, err := os.ReadFile(outputPath)
+	if errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("%w: %s does not exist", ErrMarkdownOutOfDate, outputPath)
+	}
+	if err != nil {
+		return err
+	}
+	if !bytes.Equal(actual, []byte(a.Markdown())) {
+		return fmt.Errorf("%w: %s differs from current analysis", ErrMarkdownOutOfDate, outputPath)
+	}
+	return nil
+}
+
+func (a Analysis) markdownPath(outputFile string) (string, error) {
+	if outputFile == "" {
+		outputFile = DefaultDocFile
+	}
+	if filepath.IsAbs(outputFile) {
+		return outputFile, nil
+	}
+	if a.projectRoot == "" {
+		return "", fmt.Errorf("relative output requires an analysis produced by Analyzer.Analyze")
+	}
+	return filepath.Join(a.projectRoot, filepath.FromSlash(outputFile)), nil
+}
+
+func freeFilesFromSnapshot(snapshot *rulekit.Snapshot) []FreeFile {
+	var result []FreeFile
+	for _, file := range snapshot.Files {
+		if file.IsTest || !file.IdentityOK || file.Identity.Kind != "free" {
+			continue
+		}
+		result = append(result, FreeFile{
+			Identity: file.Identity,
+			File:     snapshot.DisplayPath(file.AbsPath),
+		})
+	}
+	slices.SortFunc(result, func(a, b FreeFile) int {
+		return strings.Compare(a.File, b.File)
+	})
+	return result
 }

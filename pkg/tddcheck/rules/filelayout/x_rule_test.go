@@ -3,6 +3,8 @@ package filelayout
 import (
 	"path/filepath"
 	"testing"
+
+	"github.com/lwmacct/260622-go-pkg-tddcheck/pkg/tddcheck/rulekit"
 )
 
 func TestViolationsAcceptsApprovedDotFileLayout(t *testing.T) {
@@ -144,7 +146,27 @@ func AsNodeWSTunnelTargetValidation() error { return nil }
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertViolationContains(t, violations, `service subject "node_ws_tunnel" must declare node_ws_tunnel.service.go with NewNodeWSTunnelService`)
+	assertViolationContains(t, violations, `service subject "node_ws_tunnel" must declare node_ws_tunnel.service.go as its anchor`)
+}
+
+func TestViolationsRequiresConfiguredSubjectAnchor(t *testing.T) {
+	root := fixture(t, map[string]string{
+		"internal/adapter/device.extra.go": "package adapter\nfunc DeviceExtra() {}\n",
+	})
+	violations, err := checkRoot(filepath.Join(root, "internal"), rulekit.Config{
+		LayerDirs:               []string{"adapter"},
+		LayerRules:              []rulekit.LayerDependencyRule{},
+		LayerFileNameModes:      map[string]string{"adapter": rulekit.FileNameModeQualifiedKind},
+		LayerKindPolicies:       map[string]map[string]string{"adapter": {"doc": "free", "extra": "free"}},
+		LayerSubjectAnchorKinds: map[string]string{"adapter": "doc"},
+		ArchitectureNamespaces:  map[string][]string{},
+		EscapedSubjectSuffixes:  []string{},
+		ForbiddenWeakSubjects:   []string{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertViolationContains(t, violations, `adapter subject "device" must declare device.doc.go as its anchor`)
 }
 
 func TestViolationsAllowsSharedServiceNamespaceWithoutServiceFile(t *testing.T) {

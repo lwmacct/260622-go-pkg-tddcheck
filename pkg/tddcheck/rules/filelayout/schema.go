@@ -34,7 +34,7 @@ func schemaGenDeclViolations(fileSet *token.FileSet, filename string, name fileN
 				violations = append(violations, violationAt(fileSet, filename, typeSpec.Pos(), "schema files must only declare model structs"))
 				continue
 			}
-			expected := upperCamelName(name.qualifier())
+			expected := upperCamelName(name.Qualifier())
 			if !camelTokenPrefix(typeSpec.Name.Name, expected) || !strings.HasSuffix(typeSpec.Name.Name, "Model") {
 				violations = append(violations, violationAt(fileSet, filename, typeSpec.Pos(), "schema model type "+typeSpec.Name.Name+" must start with "+expected+" and end with Model"))
 			}

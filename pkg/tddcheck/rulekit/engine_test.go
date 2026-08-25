@@ -13,7 +13,7 @@ func TestEngineRegisterRunsTypedFileRuleAndSortsDiagnostics(t *testing.T) {
 	var engine Engine
 	engine.Register("filename", FileScope, func(_ context.Context, _ *Snapshot, file GoFile) ([]Diagnostic, error) {
 		position := Position{File: file.RelPath, Line: 1}
-		return []Diagnostic{NewDiagnostic("", SeverityWarning, file.Base, position, position)}, nil
+		return []Diagnostic{NewDiagnostic("", "filename/check", SeverityWarning, file.Base, position, position)}, nil
 	})
 
 	diagnostics, err := engine.Run(context.Background(), snapshot)
@@ -23,7 +23,7 @@ func TestEngineRegisterRunsTypedFileRuleAndSortsDiagnostics(t *testing.T) {
 	if len(diagnostics) != 2 || diagnostics[0].Message != "a.go" || diagnostics[1].Message != "z.go" {
 		t.Fatalf("unexpected diagnostics: %#v", diagnostics)
 	}
-	if diagnostics[0].RuleID != "filename" || diagnostics[0].Severity != SeverityWarning {
+	if diagnostics[0].RuleID != "filename" || diagnostics[0].Code != "filename/check" || diagnostics[0].Severity != SeverityWarning {
 		t.Fatalf("rule metadata not normalized: %#v", diagnostics[0])
 	}
 }

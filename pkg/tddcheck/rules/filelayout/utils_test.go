@@ -7,7 +7,7 @@ import (
 
 func TestViolationsChecksUtilsContent(t *testing.T) {
 	root := fixture(t, map[string]string{
-		"internal/service/device.utils.go": `package service
+		"internal/handler/device.utils.go": `package handler
 
 const defaultName = "device"
 type DeviceHelper struct{}

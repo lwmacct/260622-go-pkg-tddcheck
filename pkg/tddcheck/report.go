@@ -7,11 +7,14 @@ import (
 )
 
 type Diagnostic = rulekit.Diagnostic
+type SuggestedFix = rulekit.SuggestedFix
+type RenameFix = rulekit.RenameFix
 type Severity = rulekit.Severity
 type Position = rulekit.Position
 type Range = rulekit.Range
 type LoadError = rulekit.LoadError
 type LoadErrorKind = rulekit.LoadErrorKind
+type FileIdentity = rulekit.FileIdentity
 
 const (
 	SeverityError   = rulekit.SeverityError

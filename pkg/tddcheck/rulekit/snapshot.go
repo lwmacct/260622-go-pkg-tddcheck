@@ -54,6 +54,8 @@ type GoFile struct {
 	Base        string
 	IsTest      bool
 	Layer       string
+	Identity    FileIdentity
+	IdentityOK  bool
 	PackageID   string
 	PackagePath string
 	Fset        *token.FileSet
@@ -247,19 +249,23 @@ func (s *Snapshot) goFile(loaded *packages.Package, filename string, parsedFile 
 	if err != nil {
 		return GoFile{}, err
 	}
+	layer := LayerForRelPath(rel, s.Config.LayerDirs)
 	file := GoFile{
 		AbsPath:     filename,
 		RelPath:     filepath.ToSlash(rel),
 		Dir:         filepath.ToSlash(filepath.Dir(rel)),
 		Base:        filepath.Base(filename),
 		IsTest:      strings.HasSuffix(filename, "_test.go"),
-		Layer:       LayerForRelPath(rel, s.Config.LayerDirs),
+		Layer:       layer,
 		PackageID:   loaded.ID,
 		PackagePath: loaded.PkgPath,
 		Fset:        s.Fset,
 		AST:         parsedFile,
 		Types:       loaded.Types,
 		TypesInfo:   loaded.TypesInfo,
+	}
+	if layerProfile, ok := s.Profile.Layer(layer); ok {
+		file.Identity, file.IdentityOK = ParseFileIdentity(layer, file.Base, layerProfile.FileNameMode)
 	}
 	for _, spec := range parsedFile.Imports {
 		path, err := strconv.Unquote(spec.Path.Value)

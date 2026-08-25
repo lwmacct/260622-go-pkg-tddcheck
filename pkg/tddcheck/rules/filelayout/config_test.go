@@ -2,6 +2,7 @@ package filelayout
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/lwmacct/260622-go-pkg-tddcheck/pkg/tddcheck/rulekit"
@@ -14,7 +15,7 @@ func TestViolationsAcceptsConfiguredPackageKindLayer(t *testing.T) {
 		"internal/adapter/httpauth/service.go": `package httpauth
 type Service struct{}
 `,
-		"internal/adapter/wsworkspace/service.handler.go": `package wsworkspace
+		"internal/adapter/wsworkspace/handler.go": `package wsworkspace
 func handleMessage() {}
 `,
 	})
@@ -24,8 +25,8 @@ func handleMessage() {}
 		LayerFileNameModes: map[string]string{
 			"adapter": rulekit.FileNameModePackageKind,
 		},
-		LayerFileKinds: map[string][]string{
-			"adapter": {"doc", "service", "service.handler"},
+		LayerKindPolicies: map[string]map[string]string{
+			"adapter": {"doc": "free", "service": "free", "handler": "free"},
 		},
 		ArchitectureNamespaces: map[string][]string{},
 		EscapedSubjectSuffixes: []string{},
@@ -50,8 +51,8 @@ func TestViolationsRejectsUnconfiguredPackageKindFile(t *testing.T) {
 		LayerFileNameModes: map[string]string{
 			"adapter": rulekit.FileNameModePackageKind,
 		},
-		LayerFileKinds: map[string][]string{
-			"adapter": {"doc", "service"},
+		LayerKindPolicies: map[string]map[string]string{
+			"adapter": {"doc": "free", "service": "free"},
 		},
 		ArchitectureNamespaces: map[string][]string{},
 		EscapedSubjectSuffixes: []string{},
@@ -61,4 +62,21 @@ func TestViolationsRejectsUnconfiguredPackageKindFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertViolationContains(t, violations, `adapter file kind "random" is not allowed`)
+}
+
+func TestCheckRejectsUnknownDeclarationPolicy(t *testing.T) {
+	root := fixture(t, map[string]string{
+		"internal/adapter/httpauth/doc.go": "package httpauth\n",
+	})
+
+	_, err := checkRoot(filepath.Join(root, "internal"), rulekit.Config{
+		LayerDirs:              []string{"adapter"},
+		LayerFileNameModes:     map[string]string{"adapter": rulekit.FileNameModePackageKind},
+		LayerKindPolicies:      map[string]map[string]string{"adapter": {"doc": "missing"}},
+		ArchitectureNamespaces: map[string][]string{},
+		LayerRules:             []rulekit.LayerDependencyRule{},
+	})
+	if err == nil || !strings.Contains(err.Error(), `unknown declaration policy "missing"`) {
+		t.Fatalf("expected unknown declaration policy error, got %v", err)
+	}
 }

@@ -9,9 +9,45 @@ func TestCompileDeepCopiesConfiguration(t *testing.T) {
 		t.Fatal(err)
 	}
 	input.LayerDirs[0] = "changed"
-	input.LayerFileKinds["handler"][0] = "changed"
-	if compiled.LayerDirs[0] != "handler" || compiled.LayerFileKinds["handler"][0] != "free" {
+	input.LayerKindPolicies["handler"]["free"] = "changed"
+	input.LayerSubjectAnchorKinds["service"] = "changed"
+	if compiled.LayerDirs[0] != "handler" ||
+		compiled.LayerKindPolicies["handler"]["free"] != "free" ||
+		compiled.LayerSubjectAnchorKinds["service"] != "service" {
 		t.Fatalf("compiled config retained caller-owned data: %#v", compiled)
+	}
+}
+
+func TestValidateFileLayoutRejectsInvalidSubjectAnchor(t *testing.T) {
+	tests := []struct {
+		name   string
+		mode   string
+		anchor string
+	}{
+		{name: "package kind", mode: FileNameModePackageKind, anchor: "doc"},
+		{name: "unknown kind", mode: FileNameModeQualifiedKind, anchor: "missing"},
+		{name: "free", mode: FileNameModeQualifiedKind, anchor: "free"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			config := Config{
+				LayerDirs:               []string{"adapter"},
+				LayerRules:              []LayerDependencyRule{},
+				LayerFileNameModes:      map[string]string{"adapter": test.mode},
+				LayerKindPolicies:       map[string]map[string]string{"adapter": {"doc": "free", "free": "free"}},
+				LayerSubjectAnchorKinds: map[string]string{"adapter": test.anchor},
+				ArchitectureNamespaces:  map[string][]string{},
+				EscapedSubjectSuffixes:  []string{},
+				ForbiddenWeakSubjects:   []string{},
+			}
+			compiled, err := config.Compile()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := compiled.ValidateFileLayout(); err == nil {
+				t.Fatal("expected invalid subject anchor to fail")
+			}
+		})
 	}
 }
 

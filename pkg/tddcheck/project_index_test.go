@@ -1,6 +1,8 @@
 package tddcheck
 
 import (
+	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -65,7 +67,7 @@ func IdentityUserSchema() {}
 	if users == nil {
 		t.Fatalf("expected users table, got %#v", index.Tables)
 	}
-	if users.Model != "IdentityUserModel" || users.Alias != "u" || users.Scope != "identity_user" {
+	if users.Model != "IdentityUserModel" || users.Alias != "u" || users.Identity.Subject != "identity_user" {
 		t.Fatalf("unexpected users table metadata: %#v", users)
 	}
 	assertFieldIndex(t, *users, "ID", "id", "int64", true, true, false, false, "")
@@ -116,13 +118,13 @@ func TestAnalysisMarkdownIncludesIndex(t *testing.T) {
 		"- Module: `example.com/app`",
 		"- Violations: `0`",
 		"## Handlers",
-		"| `device` | `deviceHandler` | `RegisterDevices` | `internal/handler/device.handler.go` | List    |",
+		"| `device` | `-`       | `handler` | `deviceHandler` | `RegisterDevices` | `internal/handler/device.handler.go` | List    |",
 		"## Services",
-		"| `DeviceService` | `device` | `internal/service/device.service.go` | `NewDeviceService` | AuthSessionService | List    |",
+		"| `DeviceService` | `device` | `-`       | `service` | `internal/service/device.service.go` | `NewDeviceService` | AuthSessionService | List    |",
 		"## Stores",
-		"| `device` | `internal/repository/device.store.go` | FetchDevice |",
+		"| `device` | `-`       | `store` | `internal/repository/device.store.go` | FetchDevice |",
 		"## Tables",
-		"| `devices` | `DeviceModel` | `device` | `internal/repository/device.schema.go` | `d`   | 1      | 0            |",
+		"| `devices` | `DeviceModel` | `device` | `-`       | `schema` | `internal/repository/device.schema.go` | `d`   | 1      | 0            |",
 		"### `devices`",
 		"| `ID`  | `id`   | `int64` | [pk]       |",
 	} {
@@ -176,6 +178,61 @@ func DeviceSchema() {}
 	}
 	if !strings.Contains(string(data), "### `devices`") {
 		t.Fatalf("expected generated doc to contain devices table, got:\n%s", string(data))
+	}
+}
+
+func TestProjectCheckMarkdownDetectsMissingAndStaleOutput(t *testing.T) {
+	root := fixture(t, map[string]string{
+		"internal/service/device.service.go": `package service
+type DeviceService struct{}
+func NewDeviceService() *DeviceService { return &DeviceService{} }
+`,
+	})
+	analysis, err := analyzeRoot(filepath.Join(root, "internal"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	output := filepath.Join(root, "docs", "index.md")
+	if err := analysis.CheckMarkdown(output); !errors.Is(err, ErrMarkdownOutOfDate) {
+		t.Fatalf("expected missing output drift, got %v", err)
+	}
+	if err := analysis.WriteMarkdown(output); err != nil {
+		t.Fatal(err)
+	}
+	if err := analysis.CheckMarkdown(output); err != nil {
+		t.Fatalf("expected current output, got %v", err)
+	}
+	if err := os.WriteFile(output, []byte("stale\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := analysis.CheckMarkdown(output); !errors.Is(err, ErrMarkdownOutOfDate) {
+		t.Fatalf("expected stale output drift, got %v", err)
+	}
+}
+
+func TestProjectAnalyzeInventoriesFreeFiles(t *testing.T) {
+	root := fixture(t, map[string]string{
+		"internal/handler/device.free.go":   "package handler\nfunc DeviceAnything() {}\n",
+		"internal/handler/x.shared.free.go": "package handler\ntype SharedAnything struct{}\n",
+	})
+	analysis, err := analyzeRoot(filepath.Join(root, "internal"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(analysis.FreeFiles) != 2 {
+		t.Fatalf("expected two free files, got %#v", analysis.FreeFiles)
+	}
+	if analysis.FreeFiles[0].Identity.Subject != "device" || analysis.FreeFiles[0].Identity.Kind != "free" {
+		t.Fatalf("unexpected subject free file: %#v", analysis.FreeFiles[0])
+	}
+	if analysis.FreeFiles[1].Identity.Namespace != "shared" || analysis.FreeFiles[1].Identity.Kind != "free" {
+		t.Fatalf("unexpected namespace free file: %#v", analysis.FreeFiles[1])
+	}
+	markdown := analysis.Markdown()
+	if !strings.Contains(markdown, "## Free Files") ||
+		!strings.Contains(markdown, "`internal/handler/device.free.go`") ||
+		!strings.Contains(markdown, "`internal/handler/x.shared.free.go`") {
+		t.Fatalf("expected free-file inventory, got:\n%s", markdown)
 	}
 }
 
@@ -251,14 +308,14 @@ func indexFixture() Index {
 		Root:       "internal",
 		ModulePath: "example.com/app",
 		Handlers: []HandlerIndex{{
-			Scope:     "device",
+			Identity:  FileIdentity{Layer: "handler", Subject: "device", Kind: "handler"},
 			Type:      "deviceHandler",
 			Registers: []string{"RegisterDevices"},
 			File:      "internal/handler/device.handler.go",
 			Methods:   []MethodIndex{{Name: "List"}},
 		}},
 		Services: []ServiceIndex{{
-			Scope:        "device",
+			Identity:     FileIdentity{Layer: "service", Subject: "device", Kind: "service"},
 			Type:         "DeviceService",
 			Constructor:  "NewDeviceService",
 			File:         "internal/service/device.service.go",
@@ -266,16 +323,16 @@ func indexFixture() Index {
 			Dependencies: []string{"AuthSessionService"},
 		}},
 		Stores: []StoreIndex{{
-			Scope:   "device",
-			File:    "internal/repository/device.store.go",
-			Methods: []MethodIndex{{Name: "FetchDevice"}},
+			Identity: FileIdentity{Layer: "repository", Subject: "device", Kind: "store"},
+			File:     "internal/repository/device.store.go",
+			Methods:  []MethodIndex{{Name: "FetchDevice"}},
 		}},
 		Tables: []TableIndex{{
-			Scope: "device",
-			Model: "DeviceModel",
-			Table: "devices",
-			Alias: "d",
-			File:  "internal/repository/device.schema.go",
+			Identity: FileIdentity{Layer: "repository", Subject: "device", Kind: "schema"},
+			Model:    "DeviceModel",
+			Table:    "devices",
+			Alias:    "d",
+			File:     "internal/repository/device.schema.go",
 			Fields: []FieldIndex{{
 				Name:       "ID",
 				Column:     "id",
@@ -286,30 +343,30 @@ func indexFixture() Index {
 	}
 }
 
-func assertHandlerIndex(t *testing.T, index Index, scope string, handlerType string, register string, methods []string) {
+func assertHandlerIndex(t *testing.T, index Index, subject string, handlerType string, register string, methods []string) {
 	t.Helper()
 
 	for _, handler := range index.Handlers {
-		if handler.Scope != scope {
+		if handler.Identity.Subject != subject {
 			continue
 		}
 		if handler.Type != handlerType || !stringIn(register, handler.Registers) {
-			t.Fatalf("unexpected handler metadata for %s: %#v", scope, handler)
+			t.Fatalf("unexpected handler metadata for %s: %#v", subject, handler)
 		}
 		assertMethods(t, handler.Methods, methods)
 		return
 	}
-	t.Fatalf("expected handler %s, got %#v", scope, index.Handlers)
+	t.Fatalf("expected handler %s, got %#v", subject, index.Handlers)
 }
 
-func assertServiceIndex(t *testing.T, index Index, serviceType string, scope string, constructor string, dependencies []string, methods []string) {
+func assertServiceIndex(t *testing.T, index Index, serviceType string, subject string, constructor string, dependencies []string, methods []string) {
 	t.Helper()
 
 	for _, service := range index.Services {
 		if service.Type != serviceType {
 			continue
 		}
-		if service.Scope != scope || service.Constructor != constructor {
+		if service.Identity.Subject != subject || service.Constructor != constructor {
 			t.Fatalf("unexpected service metadata for %s: %#v", serviceType, service)
 		}
 		for _, dependency := range dependencies {
@@ -323,17 +380,17 @@ func assertServiceIndex(t *testing.T, index Index, serviceType string, scope str
 	t.Fatalf("expected service %s, got %#v", serviceType, index.Services)
 }
 
-func assertStoreIndex(t *testing.T, index Index, scope string, methods []string) {
+func assertStoreIndex(t *testing.T, index Index, subject string, methods []string) {
 	t.Helper()
 
 	for _, store := range index.Stores {
-		if store.Scope != scope {
+		if store.Identity.Subject != subject {
 			continue
 		}
 		assertMethods(t, store.Methods, methods)
 		return
 	}
-	t.Fatalf("expected store %s, got %#v", scope, index.Stores)
+	t.Fatalf("expected store %s, got %#v", subject, index.Stores)
 }
 
 func assertMethods(t *testing.T, values []MethodIndex, methods []string) {
@@ -362,15 +419,57 @@ func findTableIndex(index Index, table string) *TableIndex {
 	return nil
 }
 
-func TestScopeFromFilenamePreservesArchitectureNamespace(t *testing.T) {
-	tests := map[string]string{
-		"device_group.handler.go": "device_group",
-		"x.shared.handler.go":     "x.shared",
+func TestProjectAnalyzePreservesArchitectureNamespaceIdentity(t *testing.T) {
+	root := fixture(t, map[string]string{
+		"internal/handler/x.shared.handler.go": `package handler
+type SharedHandler struct{}
+func RegisterShared() {}
+`,
+	})
+	analysis, err := analyzeRoot(filepath.Join(root, "internal"))
+	if err != nil {
+		t.Fatal(err)
 	}
-	for base, want := range tests {
-		if got := scopeFromFilename(base); got != want {
-			t.Errorf("scopeFromFilename(%q) = %q, want %q", base, got, want)
-		}
+	if len(analysis.Index.Handlers) != 1 {
+		t.Fatalf("expected one handler, got %#v", analysis.Index.Handlers)
+	}
+	identity := analysis.Index.Handlers[0].Identity
+	if identity.Subject != "" || identity.Namespace != "shared" || identity.Kind != "handler" {
+		t.Fatalf("unexpected architecture identity: %#v", identity)
+	}
+}
+
+func TestProjectAnalyzeIndexesPackageKindFile(t *testing.T) {
+	root := fixture(t, map[string]string{
+		"internal/service/service.go": `package service
+type DeviceService struct{}
+func NewDeviceService() *DeviceService { return &DeviceService{} }
+`,
+	})
+	analyzer, err := New(Options{
+		Root: filepath.Join(root, "internal"),
+		Config: Config{
+			LayerDirs:               []string{"service"},
+			LayerRules:              []LayerDependencyRule{},
+			LayerFileNameModes:      map[string]string{"service": FileNameModePackageKind},
+			LayerKindPolicies:       map[string]map[string]string{"service": {"service": "service"}},
+			LayerSubjectAnchorKinds: map[string]string{},
+			ArchitectureNamespaces:  map[string][]string{},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	analysis, err := analyzer.Analyze(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(analysis.Index.Services) != 1 {
+		t.Fatalf("expected one service, got %#v", analysis.Index.Services)
+	}
+	identity := analysis.Index.Services[0].Identity
+	if identity.Subject != "device" || identity.Kind != "service" {
+		t.Fatalf("unexpected package-kind identity: %#v", identity)
 	}
 }
 

@@ -104,6 +104,26 @@ func (s *Store) FetchDevice(ctx context.Context, id string) (*string, error) { r
 	}
 }
 
+func TestViolationsAllowsRepositoryRowFieldNamedModel(t *testing.T) {
+	root := fixture(t, map[string]string{
+		"internal/repository/model_alias.support.go": `package repository
+type ModelAliasRow struct { Model string }
+`,
+		"internal/service/device.service.go": `package service
+import "example.com/app/internal/repository"
+type DeviceService struct{}
+func NewDeviceService() *DeviceService { return &DeviceService{} }
+func (s *DeviceService) Resolve(row repository.ModelAliasRow) string { return row.Model }
+`,
+	})
+
+	violations, err := checkRoot(filepath.Join(root, "internal"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertNoViolationContains(t, violations, "repository schema models")
+}
+
 func TestViolationsAllowsBusinessMethodNamedQuery(t *testing.T) {
 	root := fixture(t, map[string]string{
 		"internal/service/device.service.go": `package service

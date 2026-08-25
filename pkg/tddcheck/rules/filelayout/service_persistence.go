@@ -247,7 +247,12 @@ func persistenceCallName(name string) bool {
 
 func forbiddenRepositoryModelSelector(file rulekit.GoFile, expr *ast.SelectorExpr) bool {
 	if file.TypesInfo != nil {
-		if object := file.TypesInfo.ObjectOf(expr.Sel); object != nil && object.Pkg() != nil {
+		semanticObject := file.TypesInfo.ObjectOf(expr.Sel)
+		if semanticObject != nil {
+			object, ok := semanticObject.(*types.TypeName)
+			if !ok || object.Pkg() == nil {
+				return false
+			}
 			path := object.Pkg().Path()
 			isRepository := strings.HasSuffix(path, "/repository") || strings.Contains(path, "/repository/")
 			return isRepository && strings.HasSuffix(object.Name(), "Model")

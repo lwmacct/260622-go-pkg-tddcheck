@@ -14,13 +14,13 @@ func serviceViolations(fileSet *token.FileSet, filename string, name fileName, p
 	serviceName, serviceNameOK := serviceStructName(parsedFile)
 	expectedServiceName := serviceName
 	if expectedServiceName == "" {
-		expectedServiceName = upperCamelName(name.qualifier()) + "Service"
+		expectedServiceName = upperCamelName(name.Qualifier()) + "Service"
 	}
 	if serviceNameOK {
 		expectedQualifier := snakeName(strings.TrimSuffix(expectedServiceName, "Service"))
-		if name.qualifier() != expectedQualifier {
+		if name.Qualifier() != expectedQualifier {
 			qualifierName := "subject"
-			if name.namespace != "" {
+			if name.Namespace != "" {
 				qualifierName = "namespace"
 			}
 			violations = append(violations, Violation{

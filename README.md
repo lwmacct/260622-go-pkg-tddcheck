@@ -53,6 +53,7 @@ tddcheck version  输出版本
 tddcheck index --root internal
 tddcheck index --root internal --format json
 tddcheck doc --root internal --output docs/tddcheck.index.gen.md
+tddcheck doc --check --root internal --output docs/tddcheck.index.gen.md
 tddcheck check --root internal --config tddcheck.json
 ```
 
@@ -64,7 +65,7 @@ CLI 只接受完整长参数，例如 `--root`、`--format` 和 `--output`。直
 
 ```text
 0  命令成功，check 未发现违规
-1  check 发现架构违规
+1  check 发现架构违规，或 doc --check 发现文档缺失/漂移
 2  参数、项目解析或输出操作失败
 ```
 
@@ -79,7 +80,7 @@ go run ./cmd/tddcheck check --root internal
 - [Go 包文档](https://pkg.go.dev/github.com/lwmacct/260622-go-pkg-tddcheck/pkg/tddcheck)：`Analyzer`、`Analysis`、配置和架构索引 API。
 - [默认规则与配置](docs/default-rules.md)：默认分层、文件类型、内容规则、依赖方向和自定义示例。
 
-`Analyzer.Analyze(ctx)` 返回带源码范围的结构化诊断和架构索引；测试可使用 `tddcheck.Assert`。生成并提交架构索引文档时，可以使用 CLI 的 `doc` 命令或 `Analysis.WriteMarkdown`。
+`Analyzer.Analyze(ctx)` 返回带稳定 code、可选修复建议和源码范围的结构化诊断，以及使用 `FileIdentity` 的 schema v2 架构索引和 free 文件审计清单；测试可使用 `tddcheck.Assert`。生成并提交架构索引文档时，可以使用 CLI 的 `doc` 命令或 `Analysis.WriteMarkdown`，并用 `doc --check` 或 `Analysis.CheckMarkdown` 检查漂移。
 
 源码通过 Go package loader 加载，因此 build tags、平台文件、import alias 和 package graph 都按真实构建视图处理。`Config.IncludeTests` 可包含测试变体，`Config.StrictPackages` 可要求所有 package 完整通过类型检查。
 

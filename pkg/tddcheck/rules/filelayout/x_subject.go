@@ -10,15 +10,15 @@ import (
 )
 
 func inferredSubjectViolations(name fileName, file rulekit.GoFile) []Violation {
-	if name.namespace != "" {
+	if name.Namespace != "" {
 		return nil
 	}
 	for _, identifier := range fileIdentifiers(file.AST) {
-		if expectedSubject, ok := inferredSnakeSubject(name.subject, identifier); ok && expectedSubject != name.subject {
+		if expectedSubject, ok := inferredSnakeSubject(name.Subject, identifier); ok && expectedSubject != name.Subject {
 			return []Violation{{
 				File:    rulekit.DisplayFilename(file.AbsPath),
 				Line:    1,
-				Message: fmt.Sprintf("subject %q must use snake_case name %q inferred from %s", name.subject, expectedSubject, identifier),
+				Message: fmt.Sprintf("subject %q must use snake_case name %q inferred from %s", name.Subject, expectedSubject, identifier),
 			}}
 		}
 	}

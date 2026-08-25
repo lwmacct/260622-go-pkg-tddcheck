@@ -189,7 +189,7 @@ func layoutFileViolations(context layoutFile) []Violation {
 		violations = append(violations, inferredSubjectViolations(context.name, context.file)...)
 	}
 
-	violations = append(violations, declarationViolations(context.name, context.file, policyID)...)
+	violations = append(violations, declarationViolations(context.profile, context.name, context.file, policyID)...)
 	return violations
 }
 

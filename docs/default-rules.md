@@ -62,6 +62,7 @@ internal/handler/x.http.free.go
 
 internal/service/device.service.go
 internal/service/device.commands.go
+internal/service/device.types.go
 internal/service/device.provider.go
 internal/service/x.shared.support.go
 internal/service/x.shared.free.go
@@ -99,9 +100,9 @@ x.unknown.free.go                                  # free 允许任意合法 nam
 各层允许的文件 kind：
 
 ```text
-handler:    free, support, mapper, context, dto, endpoint, handler, middleware, utils
-service:    free, support, mapper, commands, provider, service
-repository: free, support, repository, schema, store
+handler:    free, support, types, mapper, context, dto, endpoint, handler, middleware, utils
+service:    free, support, types, mapper, commands, provider, service
+repository: free, support, types, repository, schema, store
 ```
 
 每个允许的 kind 都显式绑定一个声明策略。默认配置中策略 ID 通常与 kind 同名；`free` 策略不限制声明。自定义 kind 如果只需要命名与依赖约束，必须显式映射到 `free`，不存在隐式的未知 kind 放行。
@@ -133,6 +134,7 @@ repository:
 
 ```text
 *.support.go      声明类型、const、Err* var、util*/validate*/normalize*/Wrap*/Is*/As* 函数
+*.types.go        仅声明类型、const、Err* var，以及错误类型的 Error/Unwrap 方法
 *.mapper.go       只能声明包级 To* 函数；禁止 context/database/ORM 相关 import
 *.service.go      service 层声明一个 {Subject}Service、New{Subject}Service 和 service receiver 方法
 *.repository.go   repository 层只能用于 x.store.repository.go；必须声明 Store struct 和 NewStore
@@ -155,8 +157,9 @@ repository:
 service 文件不得直接依赖 database/sql、gorm、bun、pgx、mongo、firestore、dynamodb 等持久化 API
 service 文件不得引用 repository.*Model
 service 公共方法签名不得暴露 repository 的 Model、Row、Patch、Create、Filter 类型；内部实现和私有方法不受此边界约束
-service/provider/support 类型不得把持久化 tag 放在 support/provider 文件；schema 文件负责 ORM 模型
-repository support 不得声明 *Model 或 ORM tag；schema model 必须放在 .schema.go
+service/provider/support/types 类型不得把持久化 tag 放在这些文件；schema 文件负责 ORM 模型
+repository support/types 不得声明 *Model 或 ORM tag；schema model 必须放在 .schema.go
+MaxSupportDeclarationLines 大于 0 时，support 中 type、const、var 声明的 AST 行跨度累计超过门槛即要求拆到同 subject/namespace 的 .types.go；import、函数和空白行不计入
 ```
 
 ## 命名规则
@@ -253,6 +256,7 @@ ArchitectureNamespaces  每层允许的架构 namespace；配置值不包含 x. 
 EscapedSubjectSuffixes  禁止编码进业务 subject 的文件 kind 或动作词
 ForbiddenWeakSubjects   禁止使用的弱业务 subject
 PublicTypeBoundarySuffixes service 公共签名禁止暴露的 repository 类型后缀；显式空 slice 可关闭
+MaxSupportDeclarationLines support 中 type、const、var 声明的最大累计行数；0 表示关闭
 ```
 
 配置的 slice 或 map 字段为 `nil` 时继承默认值；显式设置为非 `nil` 空集合时关闭对应默认项。

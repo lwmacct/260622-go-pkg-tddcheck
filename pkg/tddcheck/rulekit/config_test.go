@@ -82,3 +82,11 @@ func TestCompileRejectsLegacyScopeKindMode(t *testing.T) {
 		t.Fatal("expected legacy scope_kind mode to fail")
 	}
 }
+
+func TestCompileRejectsNegativeSupportDeclarationLimit(t *testing.T) {
+	config := DefaultConfig()
+	config.MaxSupportDeclarationLines = -1
+	if _, err := config.Compile(); err == nil {
+		t.Fatal("expected negative support declaration limit to fail")
+	}
+}

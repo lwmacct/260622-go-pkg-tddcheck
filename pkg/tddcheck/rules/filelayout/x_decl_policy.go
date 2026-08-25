@@ -8,8 +8,9 @@ import (
 )
 
 type declContext struct {
-	name fileName
-	file rulekit.GoFile
+	profile rulekit.Profile
+	name    fileName
+	file    rulekit.GoFile
 }
 
 type declPolicy struct {
@@ -18,8 +19,8 @@ type declPolicy struct {
 	check     func(declContext) []Violation
 }
 
-func declarationViolations(name fileName, file rulekit.GoFile, policyID string) []Violation {
-	context := declContext{name: name, file: file}
+func declarationViolations(profile rulekit.Profile, name fileName, file rulekit.GoFile, policyID string) []Violation {
+	context := declContext{profile: profile, name: name, file: file}
 	policy, ok := defaultDeclPolicies[policyID]
 	if !ok {
 		return []Violation{{
@@ -56,6 +57,7 @@ var defaultDeclPolicies = map[string]declPolicy{
 	"provider":   {layers: []string{"service"}, check: checkProvider},
 	"utils":      {check: checkUtils},
 	"support":    {check: checkSupport},
+	"types":      {check: checkTypes},
 	"service":    {layers: []string{"service"}, check: checkService},
 	"store":      {layers: []string{"repository"}, check: checkStore},
 	"schema":     {layers: []string{"repository"}, check: checkSchema},
@@ -126,9 +128,14 @@ func checkArchitectureSupport(context declContext) []Violation {
 
 func checkSupport(context declContext) []Violation {
 	if context.layer() == "handler" && context.name.Namespace == "http" {
-		return checkArchitectureSupport(context)
+		violations := checkArchitectureSupport(context)
+		return append(violations, supportDeclarationLineViolations(context.file.Fset, context.file.AbsPath, context.name, context.file.AST, context.profile.MaxSupportDeclarationLines)...)
 	}
-	return supportViolations(context.file.Fset, context.file.AbsPath, context.layer(), context.name, context.file.AST)
+	return supportViolations(context.file.Fset, context.file.AbsPath, context.layer(), context.name, context.file.AST, context.profile.MaxSupportDeclarationLines)
+}
+
+func checkTypes(context declContext) []Violation {
+	return typesViolations(context.file, context.name)
 }
 
 func checkService(context declContext) []Violation {

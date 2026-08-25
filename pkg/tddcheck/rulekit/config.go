@@ -46,6 +46,9 @@ type Config struct {
 	// appear in exported service method signatures. Nil inherits defaults;
 	// an explicit empty slice disables this boundary check.
 	PublicTypeBoundarySuffixes []string `json:"publicTypeBoundarySuffixes,omitempty"`
+	// MaxSupportDeclarationLines limits the total lines occupied by type, const,
+	// and var declarations in a support file. Zero disables the limit.
+	MaxSupportDeclarationLines int `json:"maxSupportDeclarationLines,omitempty"`
 }
 
 type Profile struct {
@@ -56,6 +59,7 @@ type Profile struct {
 	EscapedSubjectSuffixes     []string
 	ForbiddenWeakSubjects      []string
 	PublicTypeBoundarySuffixes []string
+	MaxSupportDeclarationLines int
 
 	layersByName             map[string]LayerProfile
 	dependencyLayerSet       map[string]bool
@@ -117,16 +121,16 @@ func DefaultConfig() Config {
 		// Keep shared/cross-layer entries before layer-specific entries.
 		LayerKindPolicies: map[string]map[string]string{
 			"handler": {
-				"free": "free", "support": "support", "mapper": "mapper",
+				"free": "free", "support": "support", "types": "types", "mapper": "mapper",
 				"context": "context", "dto": "dto", "endpoint": "endpoint",
 				"handler": "handler", "middleware": "middleware", "utils": "utils",
 			},
 			"service": {
-				"free": "free", "support": "support", "mapper": "mapper",
+				"free": "free", "support": "support", "types": "types", "mapper": "mapper",
 				"commands": "commands", "provider": "provider", "service": "service",
 			},
 			"repository": {
-				"free": "free", "support": "support", "repository": "repository",
+				"free": "free", "support": "support", "types": "types", "repository": "repository",
 				"schema": "schema", "store": "store",
 			},
 		},
@@ -151,6 +155,7 @@ func DefaultConfig() Config {
 			"schema",
 			"utils",
 			"commands",
+			"types",
 			"constants",
 			"errors",
 			"validation",
@@ -253,6 +258,9 @@ func (c Config) Validate() error {
 	}
 	if err := validateNames("skip directory", c.SkipDirs); err != nil {
 		return err
+	}
+	if c.MaxSupportDeclarationLines < 0 {
+		return fmt.Errorf("max support declaration lines must not be negative")
 	}
 	dependencyLayers := sliceSet(c.DependencyLayerDirs)
 	for _, layer := range c.LayerDirs {
@@ -417,6 +425,7 @@ func (c Config) Profile() Profile {
 		EscapedSubjectSuffixes:     c.EscapedSubjectSuffixes,
 		ForbiddenWeakSubjects:      c.ForbiddenWeakSubjects,
 		PublicTypeBoundarySuffixes: slices.Clone(c.PublicTypeBoundarySuffixes),
+		MaxSupportDeclarationLines: c.MaxSupportDeclarationLines,
 		layersByName:               layersByName,
 		dependencyLayerSet:         sliceSet(c.DependencyLayerDirs),
 		kindPolicyByLayer:          kindPolicies,

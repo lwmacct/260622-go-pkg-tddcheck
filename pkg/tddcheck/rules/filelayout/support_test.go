@@ -3,6 +3,8 @@ package filelayout
 import (
 	"path/filepath"
 	"testing"
+
+	"github.com/lwmacct/260622-go-pkg-tddcheck/pkg/tddcheck/rulekit"
 )
 
 func TestViolationsChecksServiceSupportContent(t *testing.T) {
@@ -85,4 +87,44 @@ type SchemaDef struct{}
 	if len(violations) != 2 {
 		t.Fatalf("expected two repository support type violations, got %#v", violations)
 	}
+}
+
+func TestViolationsLimitsSupportDeclarationLines(t *testing.T) {
+	root := fixture(t, map[string]string{
+		"internal/service/device.support.go": `package service
+
+import "errors"
+
+type Device struct {
+	ID string
+}
+
+const DeviceStatusActive = "active"
+
+var ErrDeviceUnavailable = errors.New("device unavailable")
+`,
+	})
+
+	violations, err := checkRoot(filepath.Join(root, "internal"), rulekit.Config{MaxSupportDeclarationLines: 4})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertViolationContains(t, violations, "support declarations occupy 5 lines (maximum 4); move types, consts, and Err* vars to device.types.go")
+}
+
+func TestViolationsLimitsArchitectureSupportDeclarationLines(t *testing.T) {
+	root := fixture(t, map[string]string{
+		"internal/handler/x.http.support.go": `package handler
+
+type Config struct {
+	Name string
+}
+`,
+	})
+
+	violations, err := checkRoot(filepath.Join(root, "internal"), rulekit.Config{MaxSupportDeclarationLines: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertViolationContains(t, violations, "move types, consts, and Err* vars to x.http.types.go")
 }

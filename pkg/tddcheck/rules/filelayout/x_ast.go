@@ -134,11 +134,6 @@ func exprIsSlice(expr ast.Expr) bool {
 	return ok
 }
 
-func exprIsPointer(expr ast.Expr) bool {
-	_, ok := expr.(*ast.StarExpr)
-	return ok
-}
-
 func exprIsIdent(expr ast.Expr, name string) bool {
 	ident, ok := expr.(*ast.Ident)
 	return ok && ident.Name == name

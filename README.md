@@ -72,7 +72,7 @@ go tool tddcheck check --root internal --config tddcheck.json
 配置文件使用 `Config` 的 lowerCamel JSON 字段名。解析采用 `encoding/json/v2` 严格语义：重复字段、未知字段和无效 UTF-8 会直接失败。
 
 warning 默认不会使分析失败；需要把架构债务纳入 CI 失败条件时，在配置中设置 `"failOnWarnings": true`。
-subject ownership 可按 layer/kind 设置为 `error`、`warning` 或 `off`，`initialisms` 可补充领域缩写。
+subject ownership 可按 layer/kind 设置为 `error`、`warning` 或 `off`；常规全大写缩写放入 `initialisms` 列表，特殊大小写缩写放入 `initialismOverrides`。
 
 工具只接受完整长参数，例如 `--root`、`--format` 和 `--output`。直接运行 `go tool tddcheck` 等同于检查默认的 `internal` 目录。
 

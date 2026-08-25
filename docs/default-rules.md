@@ -328,7 +328,8 @@ WarnUnclassifiedFiles      未分类文件 warning
 MaxSharedDeclarationLines  x.shared 声明最大 AST 行跨度；0 表示关闭
 LayerPackageNames          严格层目录对应的 package 名
 SubjectOwnershipModes      按 layer/kind 设置 subject ownership 为 error、warning 或 off
-Initialisms                自定义 snake_case subject 到 UpperCamel 的缩写映射
+Initialisms                常规全大写缩写列表，例如 api、http、uuid
+InitialismOverrides        特殊大小写缩写映射，例如 oauth -> OAuth
 FailOnWarnings             将 warning 诊断视为 Analysis.Passed 失败
 ```
 
@@ -345,9 +346,10 @@ slice 或 map 字段为 `nil` 时继承对应默认值。显式空集合用于�
   "subjectOwnershipModes": {
     "handler": {"dto": "warning"}
   },
-  "initialisms": {
-    "rbac": "RBAC",
-    "uuid": "UUID"
+  "initialisms": ["api", "http", "uuid"],
+  "initialismOverrides": {
+    "oauth": "OAuth",
+    "rbac": "RBAC"
   },
   "failOnWarnings": true
 }

@@ -69,9 +69,12 @@ type Config struct {
 	// SubjectOwnershipModes controls subject-prefix checks by layer and kind.
 	// Values are error, warning, or off. Unconfigured entries remain errors.
 	SubjectOwnershipModes map[string]map[string]string `json:"subjectOwnershipModes,omitempty"`
-	// Initialisms maps snake-case subject components to their exported spelling.
-	// Keys are case-insensitive. Nil inherits the built-in Go initialisms.
-	Initialisms map[string]string `json:"initialisms,omitempty"`
+	// Initialisms lists snake-case subject components that are exported in all
+	// caps, for example api -> API and http -> HTTP. Nil inherits defaults.
+	Initialisms []string `json:"initialisms,omitempty"`
+	// InitialismOverrides maps exceptional components to their exact exported
+	// spelling, for example oauth -> OAuth. Nil inherits defaults.
+	InitialismOverrides map[string]string `json:"initialismOverrides,omitempty"`
 	// FailOnWarnings makes Analysis.Passed report warnings as failures.
 	FailOnWarnings bool `json:"failOnWarnings,omitempty"`
 }
@@ -92,6 +95,7 @@ type Profile struct {
 	MaxSharedDeclarationLines  int
 	SubjectOwnershipModes      map[string]map[string]string
 	Initialisms                map[string]string
+	InitialismOverrides        map[string]string
 	FailOnWarnings             bool
 
 	layersByName             map[string]LayerProfile
@@ -206,11 +210,10 @@ func DefaultConfig() Config {
 		ForbiddenWeakSubjects:      []string{"common", "default", "helper", "helpers", "misc", "util", "utils"},
 		PublicTypeBoundarySuffixes: []string{"Model", "Row", "Patch", "Create", "Filter"},
 		StoreMethodActions:         []string{"List", "Fetch", "Count", "Exists", "Create", "Update", "Delete", "Upsert", "Add", "Remove", "Replace"},
-		Initialisms: map[string]string{
-			"api": "API", "http": "HTTP", "id": "ID", "ip": "IP", "json": "JSON",
-			"llm": "LLM", "oauth": "OAuth", "rbac": "RBAC", "sql": "SQL", "ssh": "SSH",
-			"tls": "TLS", "url": "URL", "uuid": "UUID", "ws": "WS",
+		Initialisms: []string{
+			"api", "http", "id", "ip", "json", "llm", "sql", "ssh", "tls", "url", "uuid", "ws",
 		},
+		InitialismOverrides: map[string]string{"oauth": "OAuth", "rbac": "RBAC"},
 	}
 }
 
@@ -260,6 +263,9 @@ func (c Config) WithDefaults() Config {
 	}
 	if c.Initialisms == nil {
 		c.Initialisms = defaults.Initialisms
+	}
+	if c.InitialismOverrides == nil {
+		c.InitialismOverrides = defaults.InitialismOverrides
 	}
 	return c
 }
@@ -311,7 +317,8 @@ func (c Config) Compile() (Config, error) {
 	c.PublicTypeBoundarySuffixes = slices.Clone(c.PublicTypeBoundarySuffixes)
 	c.StoreMethodActions = slices.Clone(c.StoreMethodActions)
 	c.SubjectOwnershipModes = cloneStringMaps(c.SubjectOwnershipModes)
-	c.Initialisms = normalizeInitialisms(c.Initialisms)
+	c.Initialisms = slices.Clone(c.Initialisms)
+	c.InitialismOverrides = maps.Clone(c.InitialismOverrides)
 	return c, nil
 }
 
@@ -346,12 +353,17 @@ func (c Config) Validate() error {
 			}
 		}
 	}
-	for key, value := range c.Initialisms {
-		if key == "" || value == "" {
-			return fmt.Errorf("initialisms must not contain empty keys or values")
+	for _, key := range c.Initialisms {
+		if !validFileAtom(key) {
+			return fmt.Errorf("initialism %q must be a lowercase filename atom", key)
+		}
+	}
+	for key, value := range c.InitialismOverrides {
+		if !validFileAtom(key) {
+			return fmt.Errorf("initialism override %q must be a lowercase filename atom", key)
 		}
 		if !startsWithUpperASCII(value) {
-			return fmt.Errorf("initialism %q must start with an uppercase letter", value)
+			return fmt.Errorf("initialism override %q must start with an uppercase letter", value)
 		}
 	}
 	dependencyLayers := sliceSet(c.DependencyLayerDirs)
@@ -526,9 +538,12 @@ func cloneStringMaps(values map[string]map[string]string) map[string]map[string]
 	return result
 }
 
-func normalizeInitialisms(values map[string]string) map[string]string {
-	result := make(map[string]string, len(values))
-	for key, value := range values {
+func effectiveInitialisms(values []string, overrides map[string]string) map[string]string {
+	result := make(map[string]string, len(values)+len(overrides))
+	for _, value := range values {
+		result[strings.ToLower(value)] = strings.ToUpper(value)
+	}
+	for key, value := range overrides {
 		result[strings.ToLower(key)] = value
 	}
 	return result
@@ -576,7 +591,8 @@ func (c Config) Profile() Profile {
 		WarnUnclassifiedFiles:      c.WarnUnclassifiedFiles,
 		MaxSharedDeclarationLines:  c.MaxSharedDeclarationLines,
 		SubjectOwnershipModes:      cloneStringMaps(c.SubjectOwnershipModes),
-		Initialisms:                normalizeInitialisms(c.Initialisms),
+		Initialisms:                effectiveInitialisms(c.Initialisms, c.InitialismOverrides),
+		InitialismOverrides:        maps.Clone(c.InitialismOverrides),
 		FailOnWarnings:             c.FailOnWarnings,
 		layersByName:               layersByName,
 		dependencyLayerSet:         sliceSet(c.DependencyLayerDirs),

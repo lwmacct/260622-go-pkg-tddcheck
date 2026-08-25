@@ -52,6 +52,7 @@ func checkFile(_ context.Context, snapshot *rulekit.Snapshot, file rulekit.GoFil
 
 func checkSnapshot(_ context.Context, _ *rulekit.Snapshot, snapshot *rulekit.Snapshot) ([]rulekit.Diagnostic, error) {
 	values := subjectAnchorViolations(snapshot)
+	values = append(values, subjectDeclarationOwnershipViolations(snapshot)...)
 	values = append(values, identityCollisionViolations(snapshot)...)
 	values = append(values, publicTypeBoundaryViolations(snapshot)...)
 	return diagnostics(values), nil
@@ -84,6 +85,7 @@ func violationsInSnapshot(snapshot *rulekit.Snapshot) []Violation {
 		violations = append(violations, violationsInFile(snapshot.Profile, file)...)
 	}
 	violations = append(violations, subjectAnchorViolations(snapshot)...)
+	violations = append(violations, subjectDeclarationOwnershipViolations(snapshot)...)
 	violations = append(violations, identityCollisionViolations(snapshot)...)
 	violations = append(violations, publicTypeBoundaryViolations(snapshot)...)
 	return violations
